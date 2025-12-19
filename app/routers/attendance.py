@@ -1,19 +1,27 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.models import Attendance
 from app.database import attendances
 from datetime import datetime
+from app.database import get_db, Base, engine, AttendanceDB
+from sqlalchemy.orm import Session
+
 
 router = APIRouter(
     prefix="/attendance",
     tags=["Attendance"]
 )
 
+
 # -------------------------------
 # 打卡
 # -------------------------------
 @router.post("/")
-def clock_in(attendance: Attendance):
-    attendances.append(attendance)
+def clock_in(attendance: Attendance,db: Session = Depends(get_db)):
+    attendances.append(attendance.user)
+    db_attendance = AttendanceDB(user = attendance.user)
+    db.add(db_attendance)
+    db.commit()
+    db.refresh(db_attendance)
     return {"message": f"{attendance.user} 已打卡", "attendance": attendance}
 
 # -------------------------------
