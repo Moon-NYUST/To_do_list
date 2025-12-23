@@ -20,7 +20,7 @@ class UserResponse(UserBase):
     pass
 
 # -------------------------------
-# 2. 考勤模型
+# 2. 考勤 模型
 # -------------------------------
 class AttendanceBase(SQLModel):
     user_name: str
@@ -38,45 +38,76 @@ class Attendance(AttendanceBase, table=True):
         total_seconds = int(delta.total_seconds())
         hours, remainder = divmod(total_seconds, 3600)
         minutes, _ = divmod(remainder, 60)
-        return f"{hours}小時 {minutes}分"
+        return f"{hours}h {minutes}m"
 
 class AttendanceRead(AttendanceBase):
     id: int
     work_hours: str
 
 # -------------------------------
-# 3. 任務模型
+# 3. 團隊 (Team) 模型
+# -------------------------------
+class TeamBase(SQLModel):
+    name: str = Field(index=True, unique=True)
+    description: Optional[str] = None
+
+class Team(TeamBase, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_by: str
+    members_str: str = Field(default="")
+
+    @property
+    def members(self) -> List[str]:
+        if not self.members_str:
+            return []
+        return self.members_str.split(",")
+    
+    @members.setter
+    def members(self, value: List[str]):
+        self.members_str = ",".join(value)
+
+class TeamCreate(TeamBase):
+    pass
+
+class TeamRead(TeamBase):
+    id: int
+    created_by: str
+    members: List[str]
+
+# -------------------------------
+# 4. 任務 (Task) 模型
 # -------------------------------
 class TaskBase(SQLModel):
     title: str
     description: Optional[str] = None
-    completed: bool = False
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     due_time: Optional[datetime] = None
+    is_completed: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    # Removed property from Base to avoid shadowing warning in Read schemas
+# 用於「創建」
+class TaskCreate(TaskBase):
+    pass
 
-def calculate_remaining_time(due_time: Optional[datetime]) -> Optional[str]:
-    if not due_time:
-        return None
-    now = datetime.now(timezone.utc)
-    target_time = due_time
-    if target_time.tzinfo is None:
-        target_time = target_time.replace(tzinfo=timezone.utc)
-    delta = target_time - now
-    if delta.total_seconds() < 0:
-        return "已過期"
-    days = delta.days
-    hours, remainder = divmod(delta.seconds, 3600)
-    minutes, _ = divmod(remainder, 60)
-    if days > 0:
-        return f"{days}天 {hours}小時 {minutes}分"
-    return f"{hours}小時 {minutes}分"
+# 用於「個人任務更新」
+class TaskUpdate(SQLModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_time: Optional[datetime] = None
+    is_completed: Optional[bool] = None
+
+# [新增] 用於「團隊任務更新」 (包含 assigned_to)
+class TeamTaskUpdate(TaskUpdate):
+    assigned_to: Optional[List[str]] = None
+
+# 用於「團隊任務創建」
+class TeamTaskCreate(TaskBase):
+    team: str
+    assigned_to: List[str] = []
 
 class PersonalTask(TaskBase, table=True):
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
     user_name: str
-
+    
     @property
     def remaining_time(self) -> Optional[str]:
         return calculate_remaining_time(self.due_time)
@@ -100,10 +131,7 @@ class TeamTask(TaskBase, table=True):
     def remaining_time(self) -> Optional[str]:
         return calculate_remaining_time(self.due_time)
 
-class TaskCreate(TaskBase):
-    pass
-
-# Response Schemas (Explicitly include computed properties as fields)
+# Response Schemas
 class PersonalTaskRead(TaskBase):
     id: str
     user_name: str
@@ -116,13 +144,27 @@ class TeamTaskRead(TaskBase):
     remaining_time: Optional[str]
 
 # -------------------------------
-# 4. 聊天訊息
+# 聊天室
 # -------------------------------
-class MessageBase(SQLModel):
-    team: str
+class Message(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    team: str = Field(index=True)
     sender: str
     content: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-class Message(MessageBase, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+# Helper
+def calculate_remaining_time(due_time: Optional[datetime]) -> Optional[str]:
+    if not due_time:
+        return None
+    now = datetime.now(timezone.utc)
+    if due_time.tzinfo is None:
+        due_time = due_time.replace(tzinfo=timezone.utc)
+    if due_time < now:
+        return "Overdue"
+    delta = due_time - now
+    days = delta.days
+    hours, _ = divmod(delta.seconds, 3600)
+    if days > 0:
+        return f"{days}d {hours}h"
+    return f"{hours}h"
