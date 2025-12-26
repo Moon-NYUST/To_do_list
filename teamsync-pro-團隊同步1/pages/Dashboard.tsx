@@ -1,307 +1,268 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Clock, 
-  History, 
-  UserCheck, 
-  TrendingUp, 
-  Activity, 
+import {
+  Clock,
+  History,
+  UserCheck,
+  TrendingUp,
+  Activity,
   AlertTriangle,
   Play,
   Square,
-  Loader2
+  Loader2,
+  ArrowDown,
+  X,
+  ExternalLink,
+  ChevronRight
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
+import { useNavigate } from 'react-router-dom';
 
 interface Attendance {
   id: number;
   user_name: string;
   clock_in: string;
-  clock_out?: string;
-  work_hours?: string;
+  clock_out: string | null;
+  work_hours: string;
+}
+
+interface TaskSummaryItem {
+  id: string;
+  title: string;
+  due_time?: string;
+  team?: string;
 }
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
-  
-  const [history, setHistory] = useState<Attendance[]>([]);
-  const [status, setStatus] = useState<'clocked-in' | 'clocked-out'>('clocked-out');
-  const [isLoading, setIsLoading] = useState(false);
+  const { theme } = useTheme();
   const [now, setNow] = useState(new Date());
-  
-  const [pendingTasksCount, setPendingTasksCount] = useState(0);
-  const [overdueCount, setOverdueCount] = useState(0);
 
-  // [新增] 格式化時間的 Helper function (解決時區問題)
-  const formatTime = (isoString: string) => {
-    if (!isoString) return '--:--';
-    // 如果後端回傳的是 "2023-10-27T10:00:00" (無 Z)，視為 UTC
-    // 如果有 Z 則自動會轉，這裡統一補上 Z 以防萬一 (若後端沒存時區資訊)
-    const date = new Date(isoString.endsWith('Z') ? isoString : isoString + 'Z');
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  };
+  // 1. 取得統計資料 (React Query)
+  const { data: statsData, refetch: refetchStats } = useQuery({
+    queryKey: ['dashboardStats'],
+    queryFn: async () => {
+      const res = await api.get('/stats/dashboard');
+      return res.data;
+    },
+    enabled: !!user
+  });
 
-  // [新增] 格式化日期的 Helper
-  const formatDate = (isoString: string) => {
-    if (!isoString) return '---';
-    const date = new Date(isoString.endsWith('Z') ? isoString : isoString + 'Z');
-    return date.toLocaleDateString();
-  };
-
-  const fetchHistory = async () => {
-    try {
+  // 2. 取得打卡紀錄 (React Query)
+  const { data: history = [], refetch: refetchHistory } = useQuery<Attendance[]>({
+    queryKey: ['attendance', user],
+    queryFn: async () => {
       const res = await api.get(`/attendance/${user}`);
-      const sortedData = res.data.sort((a: Attendance, b: Attendance) => 
-        new Date(b.clock_in).getTime() - new Date(a.clock_in).getTime()
-      );
-      setHistory(sortedData);
+      return res.data;
+    },
+    enabled: !!user
+  });
 
-      const latestRecord = sortedData[0];
-      const isActive = latestRecord && !latestRecord.clock_out;
-      setStatus(isActive ? 'clocked-in' : 'clocked-out');
+  const [isLoading, setIsLoading] = useState(false);
+  const [status, setStatus] = useState<'clocked-in' | 'clocked-out'>('clocked-out');
+
+  // --- 詳情 Modal 狀態 ---
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailTitle, setDetailTitle] = useState('');
+  const [detailData, setDetailData] = useState<{ personal: TaskSummaryItem[], team: TaskSummaryItem[] }>({ personal: [], team: [] });
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+
+  const fetchDetail = async (type: 'pending' | 'overdue') => {
+    setIsDetailLoading(true);
+    setDetailTitle(type === 'pending' ? '待處理任務詳情' : '逾期任務詳情');
+    try {
+      const res = await api.get(`/stats/tasks/${type}`);
+      setDetailData(res.data);
+      setShowDetailModal(true);
     } catch (err) {
-      console.error("無法獲取考勤記錄", err);
+      alert("載入詳情失敗");
+    } finally {
+      setIsDetailLoading(false);
     }
   };
 
-  const fetchStats = async () => {
+  // 同步出勤狀態
+  useEffect(() => {
+    if (history.length > 0) {
+      const isStillIn = !history[0].clock_out;
+      setStatus(isStillIn ? 'clocked-in' : 'clocked-out');
+    } else {
+      setStatus('clocked-out');
+    }
+  }, [history]);
+
+  const formatTime = (isoString: string) => {
+    if (!isoString) return '--:--';
     try {
-      const res = await api.get('/stats/dashboard');
-      setPendingTasksCount(res.data.pending_personal_tasks);
-      setOverdueCount(res.data.total_overdue);
-    } catch (err) {
-      console.error("無法獲取統計數據", err);
+      const date = new Date(isoString);
+      return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch {
+      return '--:--';
     }
   };
 
   useEffect(() => {
-    if (user) {
-      fetchHistory();
-      fetchStats();
-    }
-    const timer = setInterval(() => {
-        setNow(new Date());
-    }, 60000); 
-
+    const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
-  }, [user]);
+  }, []);
 
-  const handleClockIn = async () => {
+  const handleClockAction = async () => {
     setIsLoading(true);
     try {
-      await api.post('/attendance/', { user });
-      await fetchHistory(); 
+      if (status === 'clocked-out') {
+        await api.post('/attendance/', { user });
+      } else {
+        await api.post(`/attendance/clock-out?user=${user}`);
+      }
+      refetchHistory();
+      refetchStats();
     } catch (err) {
-      alert('打卡失敗，請檢查網路連線');
+      alert("操作失敗，請稍後再試");
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleClockOut = async () => {
-    setIsLoading(true);
-    try {
-      await api.post(`/attendance/clock-out?user=${user}`);
-      await fetchHistory(); 
-    } catch (err) {
-      alert('下班打卡失敗');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const calculateTodayTotalHours = () => {
-    if (!history.length) return '0h 0m';
-    
-    // 這裡比較日期時，也要確保用當地的日期字串
-    const todayStr = now.toLocaleDateString(); 
-    let totalMilliseconds = 0;
-
-    history.forEach(record => {
-        // 將紀錄的時間轉為當地時間物件
-        const recordDate = new Date(record.clock_in.endsWith('Z') ? record.clock_in : record.clock_in + 'Z');
-        
-        if (recordDate.toLocaleDateString() === todayStr) {
-            const startTime = recordDate.getTime();
-            let endTime;
-
-            if (record.clock_out) {
-                const outDate = new Date(record.clock_out.endsWith('Z') ? record.clock_out : record.clock_out + 'Z');
-                endTime = outDate.getTime();
-            } else {
-                endTime = now.getTime();
-            }
-
-            totalMilliseconds += (endTime - startTime);
-        }
-    });
-
-    const totalMinutes = Math.floor(totalMilliseconds / 60000);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-
-    return `${hours}h ${minutes}m`;
   };
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      
-      {/* 1. 數據卡片區域 */}
+    <div className="space-y-8 animate-in fade-in duration-500 pb-10">
+      {/* 頂部歡迎詞 */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className={`text-4xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>你好, {user} 👋</h1>
+          <p className="text-slate-500 font-medium mt-1">今天又是高效協作的一天！</p>
+        </div>
+        <div className={`px-6 py-3 rounded-2xl shadow-sm border flex items-center gap-4 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">目前時間</p>
+            <p className={`text-xl font-mono font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+              {now.toLocaleTimeString('zh-TW', { hour12: false })}
+            </p>
+          </div>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-primary-950/50 text-primary-400' : 'bg-primary-50 text-primary-600'}`}>
+            <Clock size={20} />
+          </div>
+        </div>
+      </div>
+
+      {/* 統計卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="glass-card p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300">
-          <div className="flex items-center justify-between mb-6">
-            <div className="w-12 h-12 bg-indigo-500/10 text-indigo-600 rounded-2xl flex items-center justify-center">
-              <TrendingUp size={24} />
-            </div>
-            {status === 'clocked-in' && (
-              <span className="flex h-3 w-3 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-              </span>
-            )}
+        <div className={`p-8 rounded-[2rem] shadow-xl relative overflow-hidden group border ${theme === 'dark' ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-50 shadow-slate-200/50'}`}>
+          <div className={`absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+            <UserCheck size={80} />
           </div>
-          <div>
-            <h3 className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">今日累積工時</h3>
-            <p className="text-4xl font-black text-slate-800 tracking-tighter">
-                {calculateTodayTotalHours()}
-            </p>
+          <p className="text-slate-500 font-bold text-sm">出勤狀態</p>
+          <div className="mt-4 flex items-center gap-3">
+            <span className={`w-3 h-3 rounded-full ${status === 'clocked-in' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
+            <h3 className={`text-2xl font-black ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{status === 'clocked-in' ? '工作中' : '已簽退'}</h3>
+          </div>
+          <button
+            onClick={handleClockAction}
+            disabled={isLoading}
+            className={`mt-6 w-full py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 ${status === 'clocked-out'
+              ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/20 hover:bg-primary-700'
+              : (theme === 'dark' ? 'bg-rose-950/30 text-rose-400 border-2 border-rose-900/30 hover:bg-rose-900/40' : 'bg-rose-50 text-rose-600 border-2 border-rose-100 hover:bg-rose-100')
+              }`}
+          >
+            {isLoading ? <Loader2 className="animate-spin" /> : status === 'clocked-out' ? <><Play size={18} fill="currentColor" /> 上班打卡</> : <><Square size={18} fill="currentColor" /> 下班簽退</>}
+          </button>
+        </div>
+
+        <div
+          onClick={() => fetchDetail('pending')}
+          className={`p-8 rounded-[2rem] shadow-xl border cursor-pointer hover:scale-[1.02] transition-all group ${theme === 'dark' ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-50 shadow-slate-200/50'}`}
+        >
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 transition-colors group-hover:bg-primary-500 group-hover:text-white ${theme === 'dark' ? 'bg-amber-950/50 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>
+            <TrendingUp size={24} />
+          </div>
+          <p className="text-slate-500 font-bold text-sm">待處理待辦事項</p>
+          <h3 className={`text-4xl font-black mt-2 ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{statsData?.pending_tasks_count || 0} <span className="text-lg text-slate-400 font-bold">項</span></h3>
+          <div className="mt-4 flex items-center gap-1 text-xs font-bold text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            查看詳情 <ChevronRight size={14} />
           </div>
         </div>
 
-        <div className="glass-card p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300">
-          <div className="flex items-center justify-between mb-6">
-            <div className="w-12 h-12 bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center">
-              <Activity size={24} />
-            </div>
+        <div
+          onClick={() => fetchDetail('overdue')}
+          className={`p-8 rounded-[2rem] shadow-xl border cursor-pointer hover:scale-[1.02] transition-all group ${theme === 'dark' ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-50 shadow-slate-200/50'}`}
+        >
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 transition-colors group-hover:bg-rose-500 group-hover:text-white ${theme === 'dark' ? 'bg-rose-950/50 text-rose-400' : 'bg-rose-50 text-rose-600'}`}>
+            <AlertTriangle size={24} />
           </div>
-          <div>
-            <h3 className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">待處理個人任務</h3>
-            <p className="text-4xl font-black text-slate-800 tracking-tighter">
-              {pendingTasksCount}
-            </p>
-          </div>
-        </div>
-
-        <div className={`glass-card p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 flex flex-col justify-between hover:scale-[1.02] transition-transform duration-300 ${overdueCount > 0 ? 'border-red-200 bg-red-50/30' : ''}`}>
-          <div className="flex items-center justify-between mb-6">
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${overdueCount > 0 ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-red-500/10 text-red-600'}`}>
-              <AlertTriangle size={24} />
-            </div>
-          </div>
-          <div>
-            <h3 className={`text-xs font-bold uppercase tracking-widest mb-1 ${overdueCount > 0 ? 'text-red-500' : 'text-slate-500'}`}>逾期重要事項</h3>
-            <p className={`text-4xl font-black tracking-tighter ${overdueCount > 0 ? 'text-red-600' : 'text-slate-800'}`}>
-                {overdueCount > 9 ? overdueCount : `0${overdueCount}`}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. 主打卡橫幅區域 */}
-      <div className={`p-10 rounded-[2.5rem] border overflow-hidden relative ${
-        status === 'clocked-in' ? 'bg-indigo-600 border-indigo-700' : 'bg-slate-900 border-slate-800'
-      } text-white shadow-2xl transition-all duration-500`}>
-        <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="relative flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="flex items-center gap-8 text-center md:text-left">
-            <div className={`w-20 h-20 rounded-[1.5rem] flex items-center justify-center ${
-              status === 'clocked-in' ? 'bg-white/20' : 'bg-indigo-600'
-            } backdrop-blur-md shadow-inner transition-colors duration-500`}>
-              {status === 'clocked-in' ? <UserCheck size={40} className="text-white" /> : <Clock size={40} className="text-white" />}
-            </div>
-            <div>
-              <h2 className="text-3xl font-black tracking-tight mb-2">
-                {status === 'clocked-in' ? '工作進行中' : '準備好開始了嗎？'}
-              </h2>
-              <p className="text-indigo-100/70 font-medium text-lg">
-                {status === 'clocked-in' ? '專注於當前目標，完成後別忘了打卡下班。' : `歡迎回來，${user}。請打卡記錄您的上班時間。`}
-              </p>
-            </div>
-          </div>
-          
-          <div className="w-full md:w-auto">
-            {status === 'clocked-out' ? (
-              <button
-                onClick={handleClockIn}
-                disabled={isLoading}
-                className="group relative flex items-center justify-center gap-3 w-full md:w-auto px-12 py-5 bg-white text-slate-900 font-extrabold rounded-2xl shadow-2xl hover:bg-slate-50 transition-all disabled:opacity-50 overflow-hidden"
-              >
-                {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Play fill="currentColor" size={20} className="group-hover:scale-110 transition-transform" />}
-                <span className="relative z-10">{isLoading ? '處理中...' : '打卡上班'}</span>
-              </button>
-            ) : (
-              <button
-                onClick={handleClockOut}
-                disabled={isLoading}
-                className="group flex items-center justify-center gap-3 w-full md:w-auto px-12 py-5 bg-transparent border-2 border-white/30 hover:border-white hover:bg-white/10 text-white font-extrabold rounded-2xl transition-all disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Square fill="currentColor" size={20} className="group-hover:scale-90 transition-transform" />}
-                <span>{isLoading ? '處理中...' : '結束工作'}</span>
-              </button>
-            )}
+          <p className="text-slate-500 font-bold text-sm">逾期未完成</p>
+          <h3 className={`text-4xl font-black mt-2 ${theme === 'dark' ? 'text-rose-500' : 'text-rose-600'}`}>{statsData?.overdue_tasks_count || 0} <span className={`text-lg font-bold ${theme === 'dark' ? 'text-rose-900/50' : 'text-rose-300'}`}>項</span></h3>
+          <div className="mt-4 flex items-center gap-1 text-xs font-bold text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            查看詳情 <ChevronRight size={14} />
           </div>
         </div>
       </div>
 
-      {/* 3. 歷史紀錄表格 */}
-      <div className="glass-card rounded-[2rem] border border-slate-200 overflow-hidden shadow-xl shadow-slate-200/40">
-        <div className="px-10 py-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <div>
-            <h3 className="text-xl font-extrabold text-slate-800 tracking-tight">考勤記錄</h3>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Attendance Log</p>
+      {/* 打卡歷史紀錄 */}
+      <div className={`rounded-[2.5rem] shadow-xl overflow-hidden border ${theme === 'dark' ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-100 shadow-slate-200/60'}`}>
+        <div className={`p-8 border-b flex justify-between items-center ${theme === 'dark' ? 'border-slate-800' : 'border-slate-50'}`}>
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-slate-800 text-white border border-slate-700' : 'bg-slate-900 text-white'}`}>
+              <History size={20} />
+            </div>
+            <h2 className={`text-xl font-black tracking-tight ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>最近打卡紀錄</h2>
           </div>
+          <span className={`text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1 ${theme === 'dark' ? 'text-slate-500 bg-slate-800' : 'text-slate-400 bg-slate-50'}`}>
+            <ArrowDown size={12} /> 往下捲動查看更多
+          </span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest">
-                <th className="px-10 py-5">Date</th>
-                <th className="px-10 py-5">Clock In</th>
-                <th className="px-10 py-5">Clock Out</th>
-                <th className="px-10 py-5 text-right">Hours</th>
+
+        <div className="overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
+          <table className="w-full text-left border-collapse">
+            <thead className={`sticky top-0 z-10 shadow-sm ${theme === 'dark' ? 'bg-slate-900/95 backdrop-blur-md' : 'bg-white/95 backdrop-blur-md'}`}>
+              <tr>
+                <th className="px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">日期</th>
+                <th className="px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">上班時間</th>
+                <th className="px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">下班時間</th>
+                <th className="px-10 py-5 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest">工作時數</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className={`divide-y ${theme === 'dark' ? 'divide-slate-800' : 'divide-slate-50'}`}>
               {history.map((record) => (
-                <tr key={record.id} className="hover:bg-slate-50/80 transition-colors group">
-                  <td className="px-10 py-6 font-bold text-slate-700">
-                    {formatDate(record.clock_in)}
+                <tr key={record.id} className={`transition-colors group ${theme === 'dark' ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/80'}`}>
+                  <td className="px-10 py-7">
+                    <p className={`font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{new Date(record.clock_in).toLocaleDateString()}</p>
                   </td>
-                  <td className="px-10 py-6">
-                    <div className="flex items-center gap-2 text-slate-600 font-medium">
-                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                  <td className="px-10 py-7">
+                    <div className={`flex items-center gap-2 font-medium ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
                       {formatTime(record.clock_in)}
                     </div>
                   </td>
-                  <td className="px-10 py-6 text-slate-600 font-medium">
+                  <td className="px-10 py-7 font-medium">
                     {record.clock_out ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full"></div>
+                      <div className={`flex items-center gap-2 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-500'}`}>
+                        <div className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full"></div>
                         {formatTime(record.clock_out)}
                       </div>
                     ) : (
-                      <span className="text-indigo-400 text-xs font-bold px-2 py-1 bg-indigo-50 rounded-md">工作中</span>
+                      <span className={`text-[10px] font-black px-3 py-1 rounded-lg animate-pulse ${theme === 'dark' ? 'bg-primary-950/50 text-primary-400' : 'bg-primary-50 text-primary-600'}`}>
+                        進行中...
+                      </span>
                     )}
                   </td>
-                  <td className="px-10 py-6 text-right">
-                    <span className={`inline-block px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${
-                      record.clock_out 
-                        ? 'bg-slate-100 text-slate-600' 
-                        : 'bg-green-100 text-green-600 border border-green-200 animate-pulse'
-                    }`}>
-                      {record.work_hours || '進行中'}
+                  <td className="px-10 py-7 text-right">
+                    <span className={`inline-block px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest ${record.clock_out
+                      ? (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600')
+                      : (theme === 'dark' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/30' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
+                      }`}>
+                      {record.work_hours || '計時中'}
                     </span>
                   </td>
                 </tr>
               ))}
               {history.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-10 py-20 text-center">
-                    <div className="flex flex-col items-center gap-4 opacity-20">
-                      <History size={64} />
-                      <p className="font-bold">尚無任何打卡記錄</p>
+                  <td colSpan={4} className="px-10 py-24 text-center">
+                    <div className="flex flex-col items-center gap-4 opacity-20 text-slate-500">
+                      <Activity size={64} />
+                      <p className="font-bold text-lg">尚無任何打卡記錄</p>
                     </div>
                   </td>
                 </tr>
@@ -310,7 +271,91 @@ const Dashboard: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* 任務詳情 Modal */}
+      {showDetailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+            <div className={`px-8 py-6 border-b flex items-center justify-between ${theme === 'dark' ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+              <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>{detailTitle}</h3>
+              <button onClick={() => setShowDetailModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-8 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-8">
+              {/* 個人任務 */}
+              <section>
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary-500"></div> 個人待辦
+                </h4>
+                {detailData.personal.length === 0 ? (
+                  <p className="text-slate-500 text-sm py-4 italic">目前沒有相關任務</p>
+                ) : (
+                  <div className="space-y-3">
+                    {detailData.personal.map(task => (
+                      <div
+                        key={task.id}
+                        onClick={() => navigate('/tasks/personal')}
+                        className={`p-4 rounded-2xl border flex items-center justify-between cursor-pointer group transition-all ${theme === 'dark' ? 'bg-slate-800/30 border-slate-800 hover:border-primary-500' : 'bg-slate-50/30 border-slate-100 hover:border-primary-300'}`}
+                      >
+                        <div>
+                          <p className={`font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{task.title}</p>
+                          {task.due_time && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1"><Clock size={10} /> {new Date(task.due_time).toLocaleString()}</p>}
+                        </div>
+                        <ExternalLink size={16} className="text-slate-400 group-hover:text-primary-500 transition-colors" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* 團隊任務 */}
+              <section>
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> 團隊指派
+                </h4>
+                {detailData.team.length === 0 ? (
+                  <p className="text-slate-500 text-sm py-4 italic">目前沒有相關任務</p>
+                ) : (
+                  <div className="space-y-3">
+                    {detailData.team.map(task => (
+                      <div
+                        key={task.id}
+                        onClick={() => {
+                          setShowDetailModal(false);
+                          navigate(`/tasks/team?team=${encodeURIComponent(task.team || '')}`);
+                        }}
+                        className={`p-4 rounded-2xl border flex items-center justify-between cursor-pointer group transition-all ${theme === 'dark' ? 'bg-slate-800/30 border-slate-800 hover:border-rose-500' : 'bg-slate-50/30 border-slate-100 hover:border-rose-300'}`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded leading-none uppercase">{task.team}</span>
+                            <p className={`font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{task.title}</p>
+                          </div>
+                          {task.due_time && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1"><Clock size={10} /> {new Date(task.due_time).toLocaleString()}</p>}
+                        </div>
+                        <ExternalLink size={16} className="text-slate-400 group-hover:text-rose-500 transition-colors" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <div className={`p-6 border-t ${theme === 'dark' ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className={`w-full py-3 rounded-xl font-bold transition-all ${theme === 'dark' ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 export default Dashboard;

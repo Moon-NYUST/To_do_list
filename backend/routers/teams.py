@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from sqlmodel import Session, select
 from database import get_session
-from models import Team, TeamCreate, TeamRead, User
+from models import Team, TeamCreate, TeamRead, User, UserResponse
 from pydantic import BaseModel
 from routers.auth import get_current_user
+from routers.chat import manager
+import asyncio
 
 router = APIRouter(
     prefix="/teams",
@@ -15,7 +17,7 @@ class AddMemberRequest(BaseModel):
     username: str
 
 @router.get("/", response_model=List[TeamRead])
-def get_my_teams(
+async def get_my_teams(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
@@ -30,7 +32,7 @@ def get_my_teams(
     return my_teams
 
 @router.post("/", response_model=TeamRead)
-def create_team(
+async def create_team(
     team_data: TeamCreate,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
@@ -55,7 +57,7 @@ def create_team(
 
 # [新增] 邀請成員加入團隊的 API
 @router.post("/{team_name}/members")
-def add_team_member(
+async def add_team_member(
     team_name: str,
     req: AddMemberRequest,
     session: Session = Depends(get_session),
@@ -89,10 +91,16 @@ def add_team_member(
     session.add(team)
     session.commit()
     
+    # [Notification] Broadcast to the invited user
+    await manager.broadcast(
+        {"type": "INVITE", "team": team_name, "message": f"您被加入團隊 {team_name}"}, 
+        f"notify:{req.username}"
+    )
+    
     return {"message": f"成功將 {req.username} 加入團隊"}
 
 @router.get("/{team_name}", response_model=TeamRead)
-def get_team_details(
+async def get_team_details(
     team_name: str,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
@@ -107,5 +115,37 @@ def get_team_details(
     # 確認當前用戶是否為該團隊成員 (隱私保護)
     if current_user.username not in team.members:
         raise HTTPException(status_code=403, detail="您不是該團隊成員")
+    
+    # 獲取成員詳細資料 (含頭像)
+    member_users = session.exec(select(User).where(User.username.in_(team.members))).all()
+    
+    # 轉換為 TeamRead 並手動填入 member_details
+    team_read = TeamRead(
+        id=team.id,
+        name=team.name,
+        description=team.description,
+        created_by=team.created_by,
+        members=team.members,
+        member_details=[UserResponse(username=u.username, avatar=u.avatar) for u in member_users]
+    )
         
-    return team
+    return team_read
+
+# [新增] 刪除團隊 API
+@router.delete("/{team_id}")
+async def delete_team(
+    team_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    team = session.get(Team, team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="團隊不存在")
+
+    # 簡單權限檢查：只有成員可以刪除 (如果要更嚴格可以檢查是否為創建者，目前先允許成員刪除)
+    if current_user.username not in team.members:
+        raise HTTPException(status_code=403, detail="您沒有權限刪除此團隊")
+
+    session.delete(team)
+    session.commit()
+    return {"message": "團隊已刪除"}

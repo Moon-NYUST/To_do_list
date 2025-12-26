@@ -12,12 +12,13 @@ class UserBase(SQLModel):
 class User(UserBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     hashed_password: str
+    avatar: Optional[str] = Field(default="https://api.dicebear.com/7.x/avataaars/svg?seed=Lucky")
 
 class UserCreate(UserBase):
     password: str
 
 class UserResponse(UserBase):
-    pass
+    avatar: Optional[str] = None
 
 # -------------------------------
 # 2. 考勤 模型
@@ -73,6 +74,7 @@ class TeamRead(TeamBase):
     id: int
     created_by: str
     members: List[str]
+    member_details: Optional[List[UserResponse]] = None
 
 # -------------------------------
 # 4. 任務 (Task) 模型
@@ -82,6 +84,7 @@ class TaskBase(SQLModel):
     description: Optional[str] = None
     due_time: Optional[datetime] = None
     is_completed: bool = Field(default=False)
+    status: str = Field(default="todo") # New status field
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 # 用於「創建」
@@ -94,6 +97,7 @@ class TaskUpdate(SQLModel):
     description: Optional[str] = None
     due_time: Optional[datetime] = None
     is_completed: Optional[bool] = None
+    status: Optional[str] = None
 
 # [新增] 用於「團隊任務更新」 (包含 assigned_to)
 class TeamTaskUpdate(TaskUpdate):
@@ -140,18 +144,30 @@ class PersonalTaskRead(TaskBase):
 class TeamTaskRead(TaskBase):
     id: str
     team: str
-    assigned_to: List[str]
-    remaining_time: Optional[str]
+    assigned_to: List[str] = []
+    remaining_time: Optional[str] = None
 
-# -------------------------------
-# 聊天室
-# -------------------------------
+# [新增] 子任務模型
+class SubTask(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
+    task_id: str = Field(index=True) # 對應 PersonalTask 或 TeamTask 的 ID
+    title: str
+    is_completed: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 class Message(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     team: str = Field(index=True)
     sender: str
     content: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class MessageRead(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str = Field(index=True)
+    team: str = Field(index=True)
+    last_read_message_id: int
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 # Helper
 def calculate_remaining_time(due_time: Optional[datetime]) -> Optional[str]:

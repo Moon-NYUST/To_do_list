@@ -1,19 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Plus, 
-  Trash2, 
-  ArrowUpCircle, 
-  Calendar, 
-  CheckCircle, 
+import {
+  Plus,
+  Trash2,
+  ArrowUpCircle,
+  Calendar,
+  CheckCircle,
   Circle,
   Tag,
   Edit2,
   X,
   Layout,
-  Clock
+  Clock,
+  Trello,
+  List as ListIcon,
+  Wifi,
+  Calendar as CalendarIcon,
+  ListChecks,
+  PlusSquare,
+  Check,
+  MessageSquare,
+  ChevronRight,
+  ChevronDown
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
+import KanbanBoard from '../components/KanbanBoard';
+import CalendarView from '../components/CalendarView';
 
 interface PersonalTask {
   id: string;
@@ -24,36 +38,93 @@ interface PersonalTask {
   created_at: string;
 }
 
+interface SubTask {
+  id: string;
+  task_id: string;
+  title: string;
+  is_completed: boolean;
+  created_at: string;
+}
+
 const PersonalTasks: React.FC = () => {
   const { user } = useAuth();
-  const [tasks, setTasks] = useState<PersonalTask[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [promoteId, setPromoteId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
+  const { theme } = useTheme();
+  const queryClient = useQueryClient();
 
-  const [formData, setFormData] = useState({ 
-    id: '', 
-    title: '', 
-    description: '', 
-    due_time: '', 
-    tags: '' 
+  const [formData, setFormData] = useState({
+    id: '',
+    title: '',
+    description: '',
+    due_time: '',
+    tags: ''
   });
-  
-  const [targetTeamName, setTargetTeamName] = useState('');
 
-  const fetchTasks = async () => {
-    try {
+  const [activeTab, setActiveTab] = useState<'details' | 'subtasks'>('details');
+  const [subtasks, setSubtasks] = useState<SubTask[]>([]);
+  const [newSubTaskTitle, setNewSubTaskTitle] = useState('');
+
+  const [targetTeamName, setTargetTeamName] = useState('');
+  const [myTeams, setMyTeams] = useState<any[]>([]);
+
+  // --- 列表擴展狀態 ---
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [tasksSubtasks, setTasksSubtasks] = useState<Record<string, SubTask[]>>({});
+
+  // 1. 取得個人任務 (React Query)
+  const { data: tasks = [], refetch: refetchTasks } = useQuery<PersonalTask[]>({
+    queryKey: ['personalTasks', user],
+    queryFn: async () => {
       const res = await api.get(`/tasks/personal/${user}`);
-      setTasks(res.data);
-    } catch (err) {
-      console.error("無法獲取個人任務", err);
-    }
-  };
+      return res.data;
+    },
+    enabled: !!user
+  });
 
   useEffect(() => {
-    fetchTasks();
+    const fetchMyTeams = async () => {
+      try {
+        const res = await api.get('/teams/');
+        setMyTeams(res.data);
+      } catch (err) {
+        console.error("Fetch Teams error:", err);
+      }
+    };
+    if (user) fetchMyTeams();
   }, [user]);
+
+  const toggleSubtasks = async (taskId: string) => {
+    setExpandedTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+        if (!tasksSubtasks[taskId]) {
+          api.get(`/subtasks/${taskId}`).then(res => {
+            setTasksSubtasks(old => ({ ...old, [taskId]: res.data }));
+          }).catch(console.error);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSubTaskInList = async (taskId: string, subtaskId: string, currentStatus: boolean) => {
+    try {
+      await api.patch(`/subtasks/${subtaskId}?is_completed=${!currentStatus}`);
+      setTasksSubtasks(prev => ({
+        ...prev,
+        [taskId]: prev[taskId].map(st => st.id === subtaskId ? { ...st, is_completed: !currentStatus } : st)
+      }));
+    } catch (err) {
+      alert('更新子任務失敗');
+    }
+  };
 
   const resetForm = () => {
     setFormData({ id: '', title: '', description: '', due_time: '', tags: '' });
@@ -68,7 +139,8 @@ const PersonalTasks: React.FC = () => {
         description: formData.description,
         due_time: formData.due_time || null
       });
-      await fetchTasks();
+      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       setShowCreateModal(false);
       resetForm();
     } catch (err) {
@@ -87,7 +159,8 @@ const PersonalTasks: React.FC = () => {
         description: formData.description,
         due_time: formData.due_time || null
       });
-      await fetchTasks();
+      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       setShowEditModal(false);
       resetForm();
     } catch (err) {
@@ -101,21 +174,23 @@ const PersonalTasks: React.FC = () => {
     if (!window.confirm("確定要刪除此任務嗎？")) return;
     try {
       await api.delete(`/tasks/personal/${taskId}`);
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     } catch (err) {
       alert('刪除失敗');
     }
   };
 
   const toggleComplete = async (task: PersonalTask) => {
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, is_completed: !t.is_completed } : t));
     try {
       await api.put(`/tasks/personal/${task.id}`, {
         is_completed: !task.is_completed
       });
+      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     } catch (err) {
       alert('操作失敗');
-      fetchTasks(); 
+      refetchTasks();
     }
   };
 
@@ -123,12 +198,57 @@ const PersonalTasks: React.FC = () => {
     if (!promoteId || !targetTeamName) return;
     try {
       await api.post(`/tasks/personal/${promoteId}/promote?team_name=${encodeURIComponent(targetTeamName)}`);
-      setTasks(prev => prev.filter(t => t.id !== promoteId));
+      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       setPromoteId(null);
       setTargetTeamName('');
       alert(`任務已成功移轉至團隊：${targetTeamName}`);
     } catch (err) {
       alert('升級失敗，請確認團隊名稱是否存在');
+    }
+  };
+
+  const fetchSubtasks = useCallback(async (taskId: string) => {
+    try {
+      const res = await api.get(`/subtasks/${taskId}`);
+      setSubtasks(res.data);
+    } catch (err) {
+      console.error("Fetch Subtasks Error:", err);
+    }
+  }, []);
+
+  const handleAddSubTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubTaskTitle.trim() || !formData.id) return;
+    try {
+      const res = await api.post('/subtasks/', {
+        task_id: formData.id,
+        title: newSubTaskTitle.trim(),
+        is_completed: false
+      });
+      setSubtasks(prev => [...prev, res.data]);
+      setNewSubTaskTitle('');
+    } catch (err) {
+      alert('新增子任務失敗');
+    }
+  };
+
+  const handleToggleSubTask = async (id: string, currentStatus: boolean) => {
+    try {
+      await api.patch(`/subtasks/${id}?is_completed=${!currentStatus}`);
+      setSubtasks(prev => prev.map(st => st.id === id ? { ...st, is_completed: !currentStatus } : st));
+    } catch (err) {
+      alert('更新子任務失敗');
+    }
+  };
+
+  const handleDeleteSubTask = async (id: string) => {
+    try {
+      await api.delete(`/subtasks/${id}`);
+      setSubtasks(prev => prev.filter(st => st.id !== id));
+    } catch (err) {
+      alert('刪除子任務失敗');
     }
   };
 
@@ -140,150 +260,249 @@ const PersonalTasks: React.FC = () => {
       due_time: task.due_time ? new Date(task.due_time).toISOString().slice(0, 16) : '',
       tags: ''
     });
+    setActiveTab('details');
+    fetchSubtasks(task.id);
     setShowEditModal(true);
   };
 
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-8">
-        <div>
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-            My Tasks
-            <span className="text-xs font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-md">PERSONAL</span>
-          </h2>
-          <p className="text-slate-500 font-medium text-sm mt-1">管理您的私人待辦事項</p>
+        <div className="flex items-center gap-6">
+          <div>
+            <h2 className={`text-2xl font-black tracking-tight flex items-center gap-3 ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>
+              My Tasks
+              <span className={`text-xs font-bold px-2 py-1 rounded-md ${theme === 'dark' ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-500'}`}>PERSONAL</span>
+            </h2>
+            <p className="text-slate-500 font-medium text-sm mt-1">管理您的私人待辦事項</p>
+          </div>
+
+          {/* View Switcher */}
+          <div className={`flex items-center p-1 rounded-xl border ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'list' ? (theme === 'dark' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-800 shadow-sm') : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <ListIcon size={14} /> 列表
+            </button>
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'kanban' ? (theme === 'dark' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-800 shadow-sm') : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Trello size={14} /> 看板
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'calendar' ? (theme === 'dark' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-800 shadow-sm') : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Calendar size={14} /> 日曆
+            </button>
+          </div>
         </div>
-        <button 
+        <button
           onClick={() => { resetForm(); setShowCreateModal(true); }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl font-bold shadow-lg shadow-slate-200 hover:bg-indigo-600 hover:shadow-indigo-200 transition-all"
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-bold shadow-lg shadow-primary-500/30 hover:bg-primary-700 transition-all font-bold"
         >
           <Plus size={18} />
           新增任務
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 overflow-y-auto pb-10 custom-scrollbar pr-2">
-        {tasks.map((task) => (
-          <div 
-            key={task.id} 
-            className={`group bg-white p-6 rounded-2xl border transition-all ${
-              task.is_completed ? 'border-green-200 bg-green-50/30' : 'border-slate-100 hover:shadow-md'
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-4 flex-1">
-                <button 
-                  onClick={() => toggleComplete(task)}
-                  className={`mt-1 transition-colors ${task.is_completed ? 'text-green-500' : 'text-slate-300 hover:text-indigo-600'}`}
-                >
-                  {task.is_completed ? <CheckCircle size={24} className="fill-green-100" /> : <Circle size={24} />}
-                </button>
-                
-                <div className="space-y-1 flex-1">
-                  <h3 
-                    className={`font-bold text-lg leading-tight cursor-pointer hover:text-indigo-600 transition-colors ${
-                      task.is_completed ? 'text-slate-400 line-through' : 'text-slate-800'
-                    }`}
-                    onClick={() => openEditModal(task)}
-                  >
-                    {task.title}
-                  </h3>
-                  <p className={`text-sm ${task.is_completed ? 'text-slate-300' : 'text-slate-500'} line-clamp-2`}>
-                    {task.description || '無描述'}
-                  </p>
-                  
-                  <div className="flex items-center gap-4 pt-2">
-                    {task.due_time && (
-                      <div className={`flex items-center gap-1.5 text-xs font-bold ${
-                        new Date(task.due_time) < new Date() && !task.is_completed ? 'text-red-500' : 'text-slate-400'
-                      }`}>
-                        <Calendar size={14} />
-                        {new Date(task.due_time).toLocaleDateString()} {new Date(task.due_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+      <div className="flex-1 overflow-y-auto pb-10 custom-scrollbar pr-2">
+        {viewMode === 'list' ? (
+          <div className="space-y-8">
+            {[
+              { id: 'todo', label: '待處理', icon: <Circle size={14} />, color: 'bg-slate-500' },
+              { id: 'in_progress', label: '進行中', icon: <Wifi size={14} />, color: 'bg-primary-500' },
+              { id: 'done', label: '已完成', icon: <CheckCircle size={14} />, color: 'bg-emerald-500' }
+            ].map(section => {
+              const sectionTasks = Array.isArray(tasks) ? tasks.filter(t => (section.id === 'done' ? t.is_completed : (!t.is_completed && ((t as any).status === section.id || (section.id === 'todo' && !(t as any).status))))) : [];
+
+              if (sectionTasks.length === 0) return null;
+
+              return (
+                <div key={section.id} className="space-y-4">
+                  <h4 className="flex items-center gap-2 text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">
+                    <div className={`w-2 h-2 rounded-full ${section.color}`}></div>
+                    {section.label} ({sectionTasks.length})
+                  </h4>
+                  <div className="grid grid-cols-1 gap-4">
+                    {sectionTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className={`group p-6 rounded-2xl border transition-all ${theme === 'dark'
+                          ? (task.is_completed ? 'bg-emerald-900/10 border-emerald-900/30' : 'bg-slate-900 border-slate-800 hover:border-slate-700')
+                          : (task.is_completed ? 'border-green-200 bg-green-50/30' : 'bg-white border-slate-100 hover:shadow-md')
+                          }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-4 flex-1">
+                            <div className="flex flex-col gap-2 mt-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleSubtasks(task.id); }}
+                                className={`p-1 rounded-md transition-colors ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}
+                              >
+                                {expandedTasks.has(task.id) ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                              </button>
+                              <button
+                                onClick={() => toggleComplete(task)}
+                                className={`transition-colors ${task.is_completed ? 'text-emerald-500' : 'text-slate-300 hover:text-primary-500'}`}
+                              >
+                                {task.is_completed ? <CheckCircle size={24} className={theme === 'dark' ? '' : 'fill-green-100'} /> : <Circle size={24} />}
+                              </button>
+                            </div>
+
+                            <div className="space-y-1 flex-1">
+                              <h3
+                                className={`font-bold text-lg leading-tight cursor-pointer hover:text-primary-500 transition-colors ${task.is_completed ? (theme === 'dark' ? 'text-slate-600' : 'text-slate-400') + ' line-through' : (theme === 'dark' ? 'text-slate-200' : 'text-slate-800')
+                                  }`}
+                                onClick={() => openEditModal(task)}
+                              >
+                                {task.title}
+                              </h3>
+                              <p className={`text-sm ${task.is_completed ? 'text-slate-300 dark:text-slate-700' : 'text-slate-500'} line-clamp-2`}>
+                                {task.description || '無描述'}
+                              </p>
+
+                              <div className="flex items-center gap-4 pt-2">
+                                {task.due_time && (
+                                  <div className={`flex items-center gap-1.5 text-xs font-bold ${new Date(task.due_time) < new Date() && !task.is_completed ? 'text-rose-500' : 'text-slate-400'
+                                    }`}>
+                                    <Calendar size={14} />
+                                    {new Date(task.due_time).toLocaleDateString()} {new Date(task.due_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+                                  <Clock size={14} />
+                                  建立於 {new Date(task.created_at).toLocaleDateString()}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-3 ml-4">
+                            {!task.is_completed && (
+                              <button
+                                onClick={() => setPromoteId(task.id)}
+                                className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all ${theme === 'dark'
+                                  ? 'text-primary-400 bg-primary-950/50 hover:bg-primary-900/50'
+                                  : 'text-primary-600 bg-primary-50 hover:bg-primary-100'
+                                  }`}
+                              >
+                                <ArrowUpCircle size={14} />
+                                升級為團隊任務
+                              </button>
+                            )}
+
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => openEditModal(task)}
+                                className={`p-2 rounded-lg transition-all ${theme === 'dark' ? 'text-slate-500 hover:text-primary-400 hover:bg-slate-800' : 'text-slate-400 hover:text-primary-600 hover:bg-primary-50'
+                                  }`}
+                                title="編輯"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTask(task.id)}
+                                className={`p-2 rounded-lg transition-all ${theme === 'dark' ? 'text-slate-500 hover:text-rose-400 hover:bg-slate-800' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                                  }`}
+                                title="刪除"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {expandedTasks.has(task.id) && (
+                          <div className="mt-4 ml-12 space-y-2 border-l-2 border-slate-100 dark:border-slate-800 pl-4 animate-in slide-in-from-top-2 duration-200">
+                            {!tasksSubtasks[task.id] ? (
+                              <div className="text-[10px] text-slate-400 animate-pulse">載入中...</div>
+                            ) : tasksSubtasks[task.id].length === 0 ? (
+                              <div className="text-[10px] text-slate-400 italic">無子任務</div>
+                            ) : (
+                              tasksSubtasks[task.id].map(st => (
+                                <div key={st.id} className="flex items-center gap-2 group/st">
+                                  <button
+                                    onClick={() => handleToggleSubTaskInList(task.id, st.id, st.is_completed)}
+                                    className={`transition-colors ${st.is_completed ? 'text-emerald-500' : 'text-slate-300 hover:text-primary-500'}`}
+                                  >
+                                    {st.is_completed ? <CheckCircle size={14} /> : <Circle size={14} />}
+                                  </button>
+                                  <span className={`text-xs font-medium ${st.is_completed ? 'line-through text-slate-400' : (theme === 'dark' ? 'text-slate-300' : 'text-slate-600')}`}>
+                                    {st.title}
+                                  </span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
-                        <Clock size={14} />
-                        建立於 {new Date(task.created_at).toLocaleDateString()}
-                    </div>
+                    ))}
                   </div>
                 </div>
-              </div>
-
-              <div className="flex flex-col items-end gap-2 ml-4">
-                {!task.is_completed && (
-                  <button
-                    onClick={() => setPromoteId(task.id)}
-                    className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    <ArrowUpCircle size={14} />
-                    升級為團隊任務
-                  </button>
-                )}
-                
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => openEditModal(task)}
-                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                    title="編輯"
-                  >
-                    <Edit2 size={16} />
-                  </button>
-                  <button 
-                    onClick={() => handleDeleteTask(task.id)}
-                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                    title="刪除"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
-        ))}
+        ) : viewMode === 'kanban' ? (
+          <KanbanBoard
+            tasks={tasks.map(t => ({ ...t, status: (t as any).status || (t.is_completed ? 'done' : 'todo'), assigned_to: [] }))}
+            onUpdateStatus={async (id, status) => {
+              await api.put(`/tasks/personal/${id}`, { status, is_completed: status === 'done' });
+              queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+              queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+            }}
+            onEditTask={openEditModal}
+            onToggleComplete={toggleComplete}
+          />
+        ) : (
+          <CalendarView tasks={tasks as any} onEditTask={openEditModal} />
+        )}
       </div>
 
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="text-lg font-bold text-slate-800">新增個人任務</h3>
+          <div className={`w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+            <div className={`px-8 py-6 border-b flex items-center justify-between ${theme === 'dark' ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+              <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>新增個人任務</h3>
               <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={20} />
               </button>
             </div>
             <form onSubmit={handleAddTask} className="p-8 space-y-5">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">任務標題</label>
+                <label className={`block text-sm font-bold mb-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`}>任務標題</label>
                 <input
                   type="text"
                   required
                   autoFocus
                   value={formData.title}
-                  onChange={(e) => setFormData({...formData, title: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50/50 outline-none transition-all font-medium"
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className={`w-full px-4 py-3 rounded-xl border outline-none transition-all font-medium ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white focus:border-primary-500 focus:ring-4 focus:ring-primary-900/20' : 'bg-white border-slate-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-50/50'}`}
                 />
               </div>
               <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">截止時間 (選填)</label>
-                  <input
-                    type="datetime-local"
-                    value={formData.due_time}
-                    onChange={(e) => setFormData({...formData, due_time: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none font-medium text-slate-600"
-                  />
+                <label className={`block text-sm font-bold mb-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`}>截止時間 (選填)</label>
+                <input
+                  type="datetime-local"
+                  value={formData.due_time}
+                  onChange={(e) => setFormData({ ...formData, due_time: e.target.value })}
+                  className={`w-full px-4 py-3 rounded-xl border outline-none font-medium ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300 focus:border-primary-500' : 'bg-white border-slate-200 text-slate-600 focus:border-primary-500'}`}
+                />
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">詳細描述</label>
+                <label className={`block text-sm font-bold mb-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`}>詳細描述</label>
                 <textarea
                   rows={3}
                   value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none resize-none"
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className={`w-full px-4 py-3 rounded-xl border outline-none resize-none ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300 focus:border-primary-500' : 'bg-white border-slate-200 text-slate-600 focus:border-primary-500'}`}
                 />
               </div>
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 py-3.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100">取消</button>
-                <button type="submit" disabled={isSubmitting || !formData.title} className="flex-1 py-3.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 disabled:opacity-50">確認新增</button>
+                <button type="button" onClick={() => setShowCreateModal(false)} className={`flex-1 py-3.5 rounded-xl font-bold transition-colors ${theme === 'dark' ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}>取消</button>
+                <button type="submit" disabled={isSubmitting || !formData.title} className="flex-1 py-3.5 rounded-xl bg-primary-600 text-white font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">確認新增</button>
               </div>
             </form>
           </div>
@@ -292,88 +511,155 @@ const PersonalTasks: React.FC = () => {
 
       {showEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="text-lg font-bold text-slate-800">編輯任務</h3>
+          <div className={`w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+            <div className={`px-8 py-4 border-b flex items-center justify-between ${theme === 'dark' ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+              <div className="flex gap-6">
+                <button
+                  onClick={() => setActiveTab('details')}
+                  className={`text-sm font-bold pb-1 transition-all ${activeTab === 'details' ? 'text-primary-600 border-b-2 border-primary-600' : 'text-slate-400'}`}
+                >
+                  任務詳情
+                </button>
+                <button
+                  onClick={() => setActiveTab('subtasks')}
+                  className={`text-sm font-bold pb-1 transition-all flex items-center gap-1.5 ${activeTab === 'subtasks' ? 'text-primary-600 border-b-2 border-primary-600' : 'text-slate-400'}`}
+                >
+                  子任務 ({subtasks.length})
+                </button>
+              </div>
               <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleUpdateTask} className="p-8 space-y-5">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">任務標題</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.title}
-                  onChange={(e) => setFormData({...formData, title: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50/50 outline-none transition-all font-medium"
-                />
-              </div>
-              <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">截止時間</label>
-                  <input
-                    type="datetime-local"
-                    value={formData.due_time}
-                    onChange={(e) => setFormData({...formData, due_time: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none font-medium text-slate-600"
-                  />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">詳細描述</label>
-                <textarea
-                  rows={3}
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none resize-none"
-                />
-              </div>
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 py-3.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100">取消</button>
-                <button type="submit" disabled={isSubmitting || !formData.title} className="flex-1 py-3.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 disabled:opacity-50">儲存變更</button>
-              </div>
-            </form>
+            <div className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              {activeTab === 'details' ? (
+                <form onSubmit={handleUpdateTask} className="space-y-5">
+                  <div>
+                    <label className={`block text-sm font-bold mb-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`}>任務標題</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border outline-none transition-all font-medium ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white focus:border-primary-500 focus:ring-4 focus:ring-primary-900/20' : 'bg-white border-slate-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-50/50'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-bold mb-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`}>截止時間</label>
+                    <input
+                      type="datetime-local"
+                      value={formData.due_time}
+                      onChange={(e) => setFormData({ ...formData, due_time: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border outline-none font-medium ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300 focus:border-primary-500' : 'bg-white border-slate-200 text-slate-600 focus:border-primary-500'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-bold mb-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`}>詳細描述</label>
+                    <textarea
+                      rows={3}
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border outline-none resize-none ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300 focus:border-primary-500' : 'bg-white border-slate-200 text-slate-600 focus:border-primary-500'}`}
+                    />
+                  </div>
+                  <div className="pt-4 flex gap-3">
+                    <button type="button" onClick={() => setShowEditModal(false)} className={`flex-1 py-3.5 rounded-xl font-bold transition-colors ${theme === 'dark' ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}>取消</button>
+                    <button type="submit" disabled={isSubmitting || !formData.title} className="flex-1 py-3.5 rounded-xl bg-primary-600 text-white font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">儲存變更</button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-6">
+                  <form onSubmit={handleAddSubTask} className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="新增子任務..."
+                      value={newSubTaskTitle}
+                      onChange={e => setNewSubTaskTitle(e.target.value)}
+                      className={`flex-1 px-4 py-3 rounded-xl border outline-none transition-all font-medium ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white focus:border-primary-500' : 'bg-white border-slate-200 focus:border-primary-500'}`}
+                    />
+                    <button type="submit" disabled={!newSubTaskTitle.trim()} className="p-3.5 bg-primary-600 text-white rounded-xl disabled:opacity-50 shadow-lg shadow-primary-500/20">
+                      <PlusSquare size={20} />
+                    </button>
+                  </form>
+
+                  <div className="space-y-3">
+                    {subtasks.length === 0 ? (
+                      <div className="text-center py-10">
+                        <ListChecks size={40} className="mx-auto text-slate-200 mb-3" />
+                        <p className="text-slate-400 text-sm italic">尚無子任務，快來建立一個吧！</p>
+                      </div>
+                    ) : (
+                      subtasks.map(st => (
+                        <div key={st.id} className={`flex items-center justify-between p-4 rounded-2xl border group transition-all ${theme === 'dark' ? (st.is_completed ? 'bg-emerald-900/10 border-emerald-900/20 opacity-60' : 'bg-slate-800 border-slate-700') : (st.is_completed ? 'bg-green-50 border-green-100 opacity-60' : 'bg-white border-slate-100 shadow-sm')}`}>
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => handleToggleSubTask(st.id, st.is_completed)} className={`transition-colors ${st.is_completed ? 'text-emerald-500' : 'text-slate-300 hover:text-primary-500'}`}>
+                              {st.is_completed ? <CheckCircle size={22} /> : <Circle size={22} />}
+                            </button>
+                            <span className={`font-bold ${st.is_completed ? 'line-through text-slate-400' : (theme === 'dark' ? 'text-slate-200' : 'text-slate-700')}`}>{st.title}</span>
+                          </div>
+                          <button onClick={() => handleDeleteSubTask(st.id)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {promoteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="text-lg font-bold text-slate-800">升級為團隊任務</h3>
-              <button onClick={() => setPromoteId(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                <X size={20} />
-              </button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-sm rounded-[2.5rem] shadow-2xl p-8 animate-in zoom-in-95 duration-200 border ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-14 h-14 rounded-2xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600">
+                <ArrowUpCircle size={28} />
+              </div>
+              <div>
+                <h3 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>升級為團隊任務</h3>
+                <p className="text-slate-500 text-xs font-medium">將此任務移動至指定團隊</p>
+              </div>
             </div>
-            <div className="p-8 space-y-5">
-              <p className="text-slate-500 text-sm font-medium">
-                這將會把此任務從您的個人列表中移除，並轉移到指定的團隊工作區。
+
+            <div className="space-y-5">
+              <p className={`text-[10px] font-bold leading-relaxed ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
+                這將會把此任務從您的個人列表中移除，並轉移到您選擇的團隊工作區中。
               </p>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">目標團隊名稱</label>
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="例如：技術開發部"
-                  value={targetTeamName}
-                  onChange={(e) => setTargetTeamName(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50/50 outline-none transition-all font-medium"
-                />
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">選擇目標團隊</label>
+                <div className="relative">
+                  <select
+                    autoFocus
+                    value={targetTeamName}
+                    onChange={(e) => setTargetTeamName(e.target.value)}
+                    className={`w-full px-5 py-4 rounded-2xl border outline-none font-bold transition-all appearance-none cursor-pointer ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white focus:border-primary-500' : 'bg-slate-50 border-slate-100 text-slate-700 focus:border-primary-500'}`}
+                  >
+                    <option value="">選擇團隊...</option>
+                    {myTeams.map(team => (
+                      <option key={team.id} value={team.name}>{team.name}</option>
+                    ))}
+                  </select>
+                  <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                    <ChevronDown size={18} />
+                  </div>
+                </div>
               </div>
-              <div className="pt-4 flex gap-3">
-                <button 
+              <div className="flex gap-3 pt-2">
+                <button
                   onClick={() => setPromoteId(null)}
-                  className="flex-1 py-3.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100"
+                  className={`flex-1 py-4 rounded-2xl font-bold transition-colors ${theme === 'dark' ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}
                 >
                   取消
                 </button>
-                <button 
+                <button
                   onClick={handlePromote}
                   disabled={!targetTeamName}
-                  className="flex-1 py-3.5 rounded-xl bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 disabled:shadow-none"
+                  className="flex-1 py-4 rounded-2xl bg-primary-600 text-white font-bold hover:bg-primary-700 shadow-xl shadow-primary-500/30 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
                 >
-                  確認移轉
+                  確認升級
                 </button>
               </div>
             </div>
