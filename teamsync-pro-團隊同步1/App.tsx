@@ -1,56 +1,66 @@
-
 import React from 'react';
-// Fix: Use namespace import to bypass named export resolution issues
-import * as ReactRouterDOM from 'react-router-dom';
-const { HashRouter: Router, Routes, Route, Navigate } = ReactRouterDOM as any;
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import Layout from './components/Layout';
+// 請確認您的元件路徑，如果是在 pages 資料夾請自行調整 (例如 './pages/Login')
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import PersonalTasks from './pages/PersonalTasks';
 import TeamWorkspace from './pages/TeamWorkspace';
+import Layout from './components/Layout';
 
+// 保護路由元件: 沒登入就踢回 Login
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { token } = useAuth(); // 確保這裡使用的是您 AuthContext 提供的 token 或 isAuthenticated 狀態
   
-  if (isLoading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-    </div>
-  );
-
-  return isAuthenticated ? <Layout>{children}</Layout> : <Navigate to="/login" />;
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
 };
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <Router>
+    <BrowserRouter>
+      <AuthProvider>
         <Routes>
+          {/* 公開頁面 */}
           <Route path="/login" element={<Login />} />
           
+          {/* --- 受保護頁面 (需登入) --- */}
+
+          {/* 1. 儀表板 */}
           <Route path="/" element={
             <PrivateRoute>
-              <Dashboard />
+              <Layout>
+                <Dashboard />
+              </Layout>
             </PrivateRoute>
           } />
 
-          <Route path="/tasks" element={
+          {/* 2. 個人任務 (對應 Layout 的連結 /tasks/personal) */}
+          <Route path="/tasks/personal" element={
             <PrivateRoute>
-              <PersonalTasks />
+              <Layout>
+                <PersonalTasks />
+              </Layout>
             </PrivateRoute>
           } />
 
-          <Route path="/teams" element={
+          {/* 3. 團隊任務 (對應 Layout 的連結 /tasks/team) */}
+          <Route path="/tasks/team" element={
             <PrivateRoute>
-              <TeamWorkspace />
+              <Layout>
+                <TeamWorkspace />
+              </Layout>
             </PrivateRoute>
           } />
 
-          <Route path="*" element={<Navigate to="/" />} />
+          {/* 4. 未知路徑導回首頁 */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+          
         </Routes>
-      </Router>
-    </AuthProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 };
 

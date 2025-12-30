@@ -1,4 +1,5 @@
 # backend/routers/auth.py
+import os
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session, select
@@ -9,6 +10,9 @@ from typing import Optional
 
 from database import get_session
 from models import User, UserCreate, UserResponse
+import shutil
+import uuid
+from fastapi import UploadFile, File
 
 # 設定
 SECRET_KEY = "YOUR_SUPER_SECRET_KEY" # 實務上應從 getenv 讀取
@@ -16,6 +20,10 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 43200 # 30天 (為了方便測試)
 
 router = APIRouter(tags=["Authentication"])
+
+from pydantic import BaseModel
+class AvatarUpdate(BaseModel):
+    avatar: str
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -89,6 +97,47 @@ def login(user: UserCreate, session: Session = Depends(get_session)):
         "status": "success",
         "message": "登入成功",
         "username": db_user.username,
+        "avatar": db_user.avatar,
         "access_token": access_token,
         "token_type": "bearer"
     }
+
+@router.post("/update-avatar")
+async def update_avatar(
+    req: AvatarUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    current_user.avatar = req.avatar
+    session.add(current_user)
+    session.commit()
+    session.refresh(current_user)
+    return {"status": "success", "avatar": current_user.avatar}
+
+@router.post("/upload-avatar")
+async def upload_avatar_file(
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    # 檢查路徑
+    os.makedirs("uploads/avatars", exist_ok=True)
+    
+    # 產生安全檔名
+    ext = os.path.splitext(file.filename)[1]
+    filename = f"{uuid.uuid4()}{ext}"
+    file_path = f"uploads/avatars/{filename}"
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    # 回傳網址 (相對於前端)
+    avatar_url = f"/uploads/avatars/{filename}"
+    
+    # 更新資料庫
+    current_user.avatar = avatar_url
+    session.add(current_user)
+    session.commit()
+    session.refresh(current_user)
+    
+    return {"status": "success", "avatar": avatar_url}

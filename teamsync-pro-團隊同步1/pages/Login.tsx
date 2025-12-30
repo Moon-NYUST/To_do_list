@@ -13,7 +13,7 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -25,7 +25,7 @@ const Login: React.FC = () => {
     try {
       if (isLogin) {
         const res = await api.post('/login', { username, password });
-        login(res.data.access_token, res.data.username);
+        login(res.data.access_token, res.data.username, res.data.avatar);
         navigate('/');
       } else {
         await api.post('/register', { username, password });

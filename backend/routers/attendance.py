@@ -12,6 +12,23 @@ router = APIRouter(
     tags=["Attendance"]
 )
 
+class StatusRequest(BaseModel):
+    usernames: List[str]
+
+@router.post("/status")
+def get_online_status(
+    req: StatusRequest,
+    session: Session = Depends(get_session)
+):
+    online_members = []
+    for username in req.usernames:
+        # 找最後一筆紀錄
+        stmt = select(Attendance).where(Attendance.user_name == username).order_by(Attendance.clock_in.desc())
+        last_rec = session.exec(stmt).first()
+        if last_rec and not last_rec.clock_out:
+            online_members.append(username)
+    return online_members
+
 class ClockInRequest(BaseModel):
     user: str
 
@@ -23,8 +40,19 @@ def clock_in(req: ClockInRequest, session: Session = Depends(get_session)):
         Attendance.clock_out == None
     )
     existing = session.exec(statement).first()
+    
     if existing:
-        return existing # 若已打卡直接回傳
+        # Lazy Check: 如果是不同天的打卡紀錄，自動幫他簽退
+        now = datetime.now(timezone.utc)
+        if existing.clock_in.date() < now.date():
+            # 自動補簽退 (設定為當天 23:59:59 或 根據需求處理)
+            # 這裡簡單處理：直接簽退在現在
+            existing.clock_out = now
+            session.add(existing)
+            session.commit()
+            # 繼續往下執行，建立新的打卡紀錄
+        else:
+            return existing # 同一天的重複打卡，直接回傳
 
     new_record = Attendance(user_name=req.user)
     session.add(new_record)

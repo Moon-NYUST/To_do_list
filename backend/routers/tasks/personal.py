@@ -5,14 +5,40 @@ from database import get_session
 # [修正] 匯入 TaskUpdate
 from models import PersonalTask, TaskCreate, TaskUpdate, PersonalTaskRead, User
 from routers.auth import get_current_user
+from routers.chat import manager
 
 router = APIRouter(
     prefix="/tasks/personal",
     tags=["Personal Tasks"]
 )
 
+@router.get("/reminders/pending", response_model=dict)
+async def get_pending_tasks_count(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    from models import TeamTask
+    
+    # 1. Personal Tasks (Incomplete)
+    p_count = session.exec(
+        select(PersonalTask)
+        .where(PersonalTask.user_name == current_user.username, PersonalTask.is_completed == False)
+    ).all()
+    
+    # 2. Team Tasks (Incomplete + Assigned to me)
+    # Using python filtering for simplicity as per previous pattern
+    # Ideally we use LIKE query: select(TeamTask).where(TeamTask.assigned_to_str.contains(username), ...)
+    t_tasks = session.exec(select(TeamTask).where(TeamTask.is_completed == False)).all()
+    t_count = [t for t in t_tasks if current_user.username in t.assigned_to]
+    
+    return {
+        "personal": len(p_count),
+        "team": len(t_count),
+        "total": len(p_count) + len(t_count)
+    }
+
 @router.get("/{user_name}", response_model=List[PersonalTaskRead])
-def get_personal_tasks(
+async def get_personal_tasks(
     user_name: str, 
     sort_by: str = "created_at", 
     order: str = "asc",
@@ -39,7 +65,7 @@ def get_personal_tasks(
     return session.exec(statement).all()
 
 @router.post("/", response_model=PersonalTask)
-def add_personal_task(
+async def add_personal_task(
     task: TaskCreate, 
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
@@ -55,7 +81,7 @@ def add_personal_task(
 
 # [修正] 使用 TaskUpdate
 @router.put("/{task_id}", response_model=PersonalTask)
-def update_personal_task(
+async def update_personal_task(
     task_id: str, 
     task_update: TaskUpdate, 
     session: Session = Depends(get_session),
@@ -69,6 +95,13 @@ def update_personal_task(
         raise HTTPException(status_code=403, detail="權限不足")
         
     task_data = task_update.dict(exclude_unset=True)
+    
+    # [同步邏輯] status 與 is_completed 連動
+    if "status" in task_data and "is_completed" not in task_data:
+        task_data["is_completed"] = (task_data["status"] == "done")
+    elif "is_completed" in task_data and "status" not in task_data:
+        task_data["status"] = "done" if task_data["is_completed"] else "todo"
+
     for key, value in task_data.items():
         setattr(task, key, value)
         
@@ -78,7 +111,7 @@ def update_personal_task(
     return task
 
 @router.delete("/{task_id}")
-def delete_personal_task(
+async def delete_personal_task(
     task_id: str,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
@@ -95,7 +128,7 @@ def delete_personal_task(
     return {"message": "Deleted"}
 
 @router.post("/{task_id}/promote")
-def promote_to_team_task(
+async def promote_to_team_task(
     task_id: str, 
     team_name: str, 
     session: Session = Depends(get_session),
@@ -115,6 +148,7 @@ def promote_to_team_task(
         title=task.title,
         description=task.description,
         is_completed=task.is_completed,
+        status=task.status,
         created_at=task.created_at,
         due_time=task.due_time
     )
@@ -125,4 +159,7 @@ def promote_to_team_task(
     session.delete(task)
     session.commit()
     
+    # [Notification] Broadcast
+    await manager.broadcast({"type": "TASK_UPDATE", "team": team_name}, f"notify:{current_user.username}")
+
     return {"message": "Task promoted to Team Task"}
