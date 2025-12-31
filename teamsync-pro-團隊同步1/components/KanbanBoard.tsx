@@ -1,24 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { CheckCircle, Circle, Clock, MoreVertical, User, Calendar, Trash2 } from 'lucide-react';
+import { CheckCircle, Circle, Clock, MoreVertical, User, Calendar, Trash2, Check, ListChecks } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+
+// 解決 TypeScript 類型衝突
+const DraggableComponent = Draggable as any;
+const DroppableComponent = Droppable as any;
 
 interface Task {
     id: string;
     title: string;
     description?: string;
+    due_time?: string;
     status: string;
     is_completed: boolean;
     assigned_to: string[];
-    due_time?: string;
+    completed_by?: string | null;
 }
 
 interface KanbanBoardProps {
     tasks: Task[];
     onUpdateStatus: (taskId: string, newStatus: string) => void;
-    onEditTask: (task: Task) => void;
-    onToggleComplete: (task: Task) => void;
+    onEditTask: (task: any) => void;
+    onToggleComplete: (task: any) => void;
     onDeleteTask: (taskId: string) => void;
+    tasksSubtasks?: Record<string, any[]>; // Pass subtasks to show progress
 }
 
 const COLUMNS = [
@@ -27,13 +33,22 @@ const COLUMNS = [
     { id: 'done', title: '已完成', color: 'bg-emerald-500' }
 ];
 
-const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, onUpdateStatus, onEditTask, onToggleComplete, onDeleteTask }) => {
+const KanbanBoard: React.FC<KanbanBoardProps> = ({
+    tasks,
+    onUpdateStatus,
+    onEditTask,
+    onToggleComplete,
+    onDeleteTask,
+    tasksSubtasks
+}) => {
     const { theme } = useTheme();
     const [boardData, setBoardData] = useState<Record<string, Task[]>>({
         todo: [],
         in_progress: [],
         done: []
     });
+
+    const [isDragging, setIsDragging] = useState(false);
 
     useEffect(() => {
         const data: Record<string, Task[]> = { todo: [], in_progress: [], done: [] };
@@ -48,23 +63,56 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, onUpdateStatus, onEdit
         setBoardData(data);
     }, [tasks]);
 
+    const onDragStart = () => {
+        setIsDragging(true);
+    };
+
     const onDragEnd = (result: DropResult) => {
+        setIsDragging(false);
         const { destination, source, draggableId } = result;
 
         if (!destination) return;
 
+        // 1. 處理刪除 (拖曳至垃圾桶)
         if (destination.droppableId === 'trash') {
             onDeleteTask(draggableId);
             return;
         }
 
+        // 2. 處理位置未變動
         if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+
+        // 3. 處理移動
+        if (source.droppableId === destination.droppableId) {
+            const column = [...boardData[source.droppableId]];
+            const [removed] = column.splice(source.index, 1);
+            const updatedTask = { ...removed, status: destination.droppableId };
+            column.splice(destination.index, 0, updatedTask);
+
+            setBoardData(prev => ({
+                ...prev,
+                [source.droppableId]: column
+            }));
+        } else {
+            const sourceColumn = [...boardData[source.droppableId]];
+            const destColumn = [...boardData[destination.droppableId]];
+            const [removed] = sourceColumn.splice(source.index, 1);
+
+            const updatedTask = { ...removed, status: destination.droppableId };
+            destColumn.splice(destination.index, 0, updatedTask);
+
+            setBoardData(prev => ({
+                ...prev,
+                [source.droppableId]: sourceColumn,
+                [destination.droppableId]: destColumn
+            }));
+        }
 
         onUpdateStatus(draggableId, destination.droppableId);
     };
 
     return (
-        <DragDropContext onDragEnd={onDragEnd}>
+        <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
             <div className="flex gap-6 h-full overflow-x-auto pb-4 custom-scrollbar">
                 {COLUMNS.map(col => (
                     <div key={col.id} className="flex flex-col w-[320px] min-w-[320px] h-full">
@@ -75,13 +123,13 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, onUpdateStatus, onEdit
                                     {col.title}
                                 </h3>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${theme === 'dark' ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-500'}`}>
-                                    {boardData[col.id].length}
+                                    {boardData[col.id]?.length || 0}
                                 </span>
                             </div>
                         </div>
 
-                        <Droppable droppableId={col.id}>
-                            {(provided, snapshot) => (
+                        <DroppableComponent droppableId={col.id}>
+                            {(provided: any, snapshot: any) => (
                                 <div
                                     {...provided.droppableProps}
                                     ref={provided.innerRef}
@@ -89,22 +137,21 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, onUpdateStatus, onEdit
                                 >
                                     <div className="space-y-3">
                                         {boardData[col.id].map((task, index) => (
-                                            /* @ts-ignore */
-                                            <Draggable key={task.id} draggableId={task.id} index={index}>
-                                                {(provided, snapshot) => (
+                                            <DraggableComponent key={task.id} draggableId={task.id} index={index}>
+                                                {(provided: any, snapshot: any) => (
                                                     <div
                                                         ref={provided.innerRef}
                                                         {...provided.draggableProps}
                                                         {...provided.dragHandleProps}
                                                         onClick={() => onEditTask(task)}
-                                                        className={`group p-4 rounded-xl border shadow-sm transition-all animate-in fade-in duration-300 ${snapshot.isDragging ? 'shadow-2xl scale-105 z-50' : ''
+                                                        className={`group p-4 rounded-xl border shadow-sm transition-all duration-200 ${snapshot.isDragging ? 'shadow-2xl scale-105 rotate-2 z-[1001]' : 'z-10'
                                                             } ${theme === 'dark'
-                                                                ? 'bg-slate-900 border-slate-800 hover:border-primary-500/50'
-                                                                : 'bg-white border-slate-100 hover:border-primary-200'
+                                                                ? 'bg-slate-900 border-slate-800 hover:border-primary-500/50 text-slate-200'
+                                                                : 'bg-white border-slate-100 hover:border-primary-200 text-slate-800'
                                                             }`}
                                                     >
                                                         <div className="flex items-start justify-between mb-3">
-                                                            <h4 className={`font-bold text-sm leading-tight ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'} ${col.id === 'done' ? 'line-through opacity-50' : ''}`}>
+                                                            <h4 className={`font-bold text-sm leading-tight ${col.id === 'done' ? 'line-through opacity-50' : ''}`}>
                                                                 {task.title}
                                                             </h4>
                                                             <button
@@ -116,7 +163,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, onUpdateStatus, onEdit
                                                         </div>
 
                                                         {task.description && (
-                                                            <p className={`text-xs line-clamp-2 mb-4 leading-relaxed ${theme === 'dark' ? 'text-slate-500' : 'text-slate-500'}`}>
+                                                            <p className="text-xs line-clamp-2 mb-4 leading-relaxed text-slate-500">
                                                                 {task.description}
                                                             </p>
                                                         )}
@@ -132,61 +179,81 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, onUpdateStatus, onEdit
                                                                         {user[0].toUpperCase()}
                                                                     </div>
                                                                 ))}
-                                                                {task.assigned_to.length > 3 && (
-                                                                    <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-white dark:border-slate-900 flex items-center justify-center text-[8px] font-bold text-slate-400">
-                                                                        +{task.assigned_to.length - 3}
-                                                                    </div>
-                                                                )}
                                                             </div>
+                                                            {task.due_time && (
+                                                                <div className={`flex items-center gap-1 text-[10px] font-bold ${new Date(task.due_time) < new Date() && col.id !== 'done' ? 'text-rose-500' : 'text-slate-400'}`}>
+                                                                    <Clock size={12} />
+                                                                    {new Date(task.due_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                                </div>
+                                                            )}
+                                                        </div>
 
-                                                            <div className="flex items-center gap-2">
-                                                                {task.due_time && (
-                                                                    <div className={`flex items-center gap-1 text-[10px] font-bold ${new Date(task.due_time) < new Date() && col.id !== 'done' ? 'text-rose-500' : 'text-slate-400'}`}>
-                                                                        <Clock size={12} />
-                                                                        {new Date(task.due_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                                                                    </div>
-                                                                )}
-                                                            </div>
+                                                        {/* Subtask Progress & Completion Tag */}
+                                                        <div className="mt-3 space-y-2">
+                                                            {/* Subtask Progress */}
+                                                            {tasksSubtasks && tasksSubtasks[task.id] && tasksSubtasks[task.id].length > 0 && (
+                                                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+                                                                    <ListChecks size={12} className="text-slate-400" />
+                                                                    <span>
+                                                                        {tasksSubtasks[task.id].filter(st => st.is_completed).length} / {tasksSubtasks[task.id].length} 子任務
+                                                                    </span>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Completed By Tag */}
+                                                            {task.is_completed && task.completed_by && (
+                                                                <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-50 text-emerald-700 rounded border border-emerald-100 w-fit animate-in fade-in slide-in-from-bottom-1">
+                                                                    <Check size={12} />
+                                                                    <span className="text-[10px] font-bold">由 {task.completed_by} 完成</span>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 )}
-                                            </Draggable>
+                                            </DraggableComponent>
                                         ))}
                                         {provided.placeholder}
                                     </div>
                                 </div>
                             )}
-                        </Droppable>
+                        </DroppableComponent>
                     </div>
                 ))}
             </div>
 
-
-            {/* Trash Bin Area - Always Visible */}
-            <Droppable droppableId="trash">
-                {(provided, snapshot) => (
+            {/* 修正後的垃圾桶區域 */}
+            <DroppableComponent droppableId="trash">
+                {(provided: any, snapshot: any) => (
                     <div
                         ref={provided.innerRef}
                         {...provided.droppableProps}
-                        className={`fixed bottom-8 left-1/2 -translate-x-1/2 p-6 rounded-full border-2 transition-all duration-300 z-50 flex items-center justify-center
-                            ${snapshot.isDraggingOver
-                                ? 'bg-rose-100 border-rose-500 text-rose-600 scale-110 shadow-xl opacity-100'
-                                : (theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-500 opacity-60 hover:opacity-100' : 'bg-white border-slate-200 text-slate-400 opacity-60 hover:opacity-100')
-                            }
-                        `}
+                        // 1. 外部容器始終固定在 bottom-0，確保 dnd 計算出的感應區域不變
+                        className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-80 h-32 z-[1000] pointer-events-none flex items-end justify-center`}
                     >
-                        <Trash2 size={32} />
-                        <span className="sr-only">拖曳至此刪除</span>
-                        {provided.placeholder}
-                        {snapshot.isDraggingOver && (
-                            <div className="absolute -top-10 bg-rose-600 text-white text-xs font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap">
-                                放開以刪除
-                            </div>
-                        )}
+                        {/* 2. 內部視覺容器處理動畫和縮放 */}
+                        <div className={`
+                            w-full h-full rounded-t-[5rem] border-4 border-b-0 flex flex-col items-center justify-center transition-all duration-300 ease-out pointer-events-auto
+                            ${isDragging ? 'translate-y-0 opacity-100' : 'translate-y-28 opacity-0'}
+                            ${snapshot.isDraggingOver
+                                ? 'bg-rose-500 border-rose-600 scale-110 shadow-[0_-10px_40px_rgba(225,29,72,0.5)] text-white'
+                                : 'bg-white/90 dark:bg-slate-900/90 border-rose-500 backdrop-blur-md shadow-2xl text-rose-500'
+                            }
+                        `}>
+                            <Trash2
+                                size={snapshot.isDraggingOver ? 44 : 32}
+                                className={`transition-all duration-300 ${snapshot.isDraggingOver ? 'mb-2 animate-bounce' : ''}`}
+                            />
+                            <span className="text-xs font-black tracking-widest">
+                                {snapshot.isDraggingOver ? '放開以刪除任務' : '拖曳至此處刪除'}
+                            </span>
+
+                            {/* 3. 確保 placeholder 在容器內渲染 */}
+                            <div className="hidden">{provided.placeholder}</div>
+                        </div>
                     </div>
                 )}
-            </Droppable>
-        </DragDropContext >
+            </DroppableComponent>
+        </DragDropContext>
     );
 };
 

@@ -86,6 +86,7 @@ class TaskBase(SQLModel):
     is_completed: bool = Field(default=False)
     status: str = Field(default="todo") # New status field
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_by: Optional[str] = None # User who completed the task
 
 # 用於「創建」
 class TaskCreate(TaskBase):
@@ -98,6 +99,7 @@ class TaskUpdate(SQLModel):
     due_time: Optional[datetime] = None
     is_completed: Optional[bool] = None
     status: Optional[str] = None
+    completed_by: Optional[str] = None
 
 # [新增] 用於「團隊任務更新」 (包含 assigned_to)
 class TeamTaskUpdate(TaskUpdate):
@@ -140,12 +142,14 @@ class PersonalTaskRead(TaskBase):
     id: str
     user_name: str
     remaining_time: Optional[str]
+    completed_by: Optional[str] = None
 
 class TeamTaskRead(TaskBase):
     id: str
     team: str
     assigned_to: List[str] = []
     remaining_time: Optional[str] = None
+    completed_by: Optional[str] = None
 
 # [新增] 子任務模型
 class SubTask(SQLModel, table=True):
@@ -154,6 +158,7 @@ class SubTask(SQLModel, table=True):
     title: str
     is_completed: bool = Field(default=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_by: Optional[str] = None
 
 class Message(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -181,6 +186,20 @@ def calculate_remaining_time(due_time: Optional[datetime]) -> Optional[str]:
     delta = due_time - now
     days = delta.days
     hours, _ = divmod(delta.seconds, 3600)
-    if days > 0:
-        return f"{days}d {hours}h"
-    return f"{hours}h"
+# -------------------------------
+# 5. Activity Log (新增)
+# -------------------------------
+class ActivityLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    team: str = Field(index=True)
+    user_name: str
+    action: str # 'checked' | 'unchecked'
+    task_title: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ActivityLogRead(SQLModel):
+    id: int
+    user_name: str
+    action: str
+    task_title: str
+    timestamp: datetime

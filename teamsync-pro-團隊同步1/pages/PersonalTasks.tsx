@@ -116,7 +116,11 @@ const PersonalTasks: React.FC = () => {
 
   const handleToggleSubTaskInList = async (taskId: string, subtaskId: string, currentStatus: boolean) => {
     try {
-      await api.patch(`/subtasks/${subtaskId}?is_completed=${!currentStatus}`);
+      // [修正] 改為傳送 JSON Body
+      await api.patch(`/subtasks/${subtaskId}`, { 
+        is_completed: !currentStatus 
+      });
+      
       setTasksSubtasks(prev => ({
         ...prev,
         [taskId]: prev[taskId].map(st => st.id === subtaskId ? { ...st, is_completed: !currentStatus } : st)
@@ -183,14 +187,18 @@ const PersonalTasks: React.FC = () => {
 
   const toggleComplete = async (task: PersonalTask) => {
     try {
+      const newIsCompleted = !task.is_completed;
+      // 個人任務通常只有自己，但保持一致性
+      const completedBy = newIsCompleted ? user : null;
+
       await api.put(`/tasks/personal/${task.id}`, {
-        is_completed: !task.is_completed
+        is_completed: newIsCompleted,
+        completed_by: completedBy
       });
       queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     } catch (err) {
-      alert('操作失敗');
-      refetchTasks();
+      alert('更新失敗');
     }
   };
 
@@ -448,13 +456,47 @@ const PersonalTasks: React.FC = () => {
         ) : viewMode === 'kanban' ? (
           <KanbanBoard
             tasks={tasks.map(t => ({ ...t, status: (t as any).status || (t.is_completed ? 'done' : 'todo'), assigned_to: [] }))}
-            onUpdateStatus={async (id, status) => {
-              await api.put(`/tasks/personal/${id}`, { status, is_completed: status === 'done' });
-              queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
-              queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+            onUpdateStatus={async (taskId, newStatus) => {
+              // Optimistic Update
+              await queryClient.cancelQueries({ queryKey: ['personalTasks'] });
+              const previousTasks = queryClient.getQueryData<PersonalTask[]>(['personalTasks']);
+
+              if (previousTasks) {
+                queryClient.setQueryData<PersonalTask[]>(['personalTasks'], (old) => {
+                  if (!old) return [];
+                  return old.map(t =>
+                    t.id === taskId
+                      ? { ...t, status: newStatus, is_completed: newStatus === 'done' }
+                      : t
+                  );
+                });
+              }
+
+              try {
+                await api.put(`/tasks/personal/${taskId}`, { status: newStatus, is_completed: newStatus === 'done' });
+              } catch (err) {
+                // Rollback
+                if (previousTasks) {
+                  queryClient.setQueryData(['personalTasks'], previousTasks);
+                }
+                alert('更新失敗');
+              } finally {
+                queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+              }
             }}
             onEditTask={openEditModal}
             onToggleComplete={toggleComplete}
+            onDeleteTask={async (taskId) => {
+              try {
+                // Direct delete (no confirmation)
+                await api.delete(`/tasks/personal/${taskId}`);
+                queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+              } catch (err) {
+                console.error('刪除失敗', err);
+              }
+            }}
           />
         ) : (
           <CalendarView tasks={tasks as any} onEditTask={openEditModal} />

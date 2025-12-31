@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlmodel import Session, select
 from database import get_session
 # [修正] 匯入 TeamTaskUpdate
-from models import TeamTask, TeamTaskCreate, TeamTaskRead, User, TeamTaskUpdate
+from models import TeamTask, TeamTaskCreate, TeamTaskRead, User, TeamTaskUpdate, ActivityLog
 from pydantic import BaseModel
 from routers.auth import get_current_user
 import asyncio
@@ -65,7 +65,7 @@ async def add_team_task(
 @router.put("/{task_id}", response_model=TeamTask)
 async def update_team_task(
     task_id: str, 
-    task_in: TeamTaskUpdate, # <--- 改成 TeamTaskUpdate
+    task_update: TeamTaskUpdate, # <--- 改成 TeamTaskUpdate
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
@@ -77,7 +77,21 @@ async def update_team_task(
          raise HTTPException(status_code=403, detail="Permission denied")
 
     # 部分更新
-    task_data = task_in.dict(exclude_unset=True)
+    task_data = task_update.dict(exclude_unset=True)
+
+    # [Log Logic] Check is_completed change
+    try:
+        if "is_completed" in task_data and task_data["is_completed"] != task.is_completed:
+            action = "checked" if task_data["is_completed"] else "unchecked"
+            log = ActivityLog(
+                team=task.team,
+                user_name=current_user.username,
+                action=action,
+                task_title=task.title
+            )
+            session.add(log)
+    except Exception as e:
+        print(f"Error creating activity log: {e}")
 
     # [同步邏輯] status 與 is_completed 連動
     if "status" in task_data and "is_completed" not in task_data:
@@ -86,6 +100,8 @@ async def update_team_task(
         task_data["status"] = "done" if task_data["is_completed"] else "todo"
 
     for key, value in task_data.items():
+        if key == "completed_by": # Explicitly handle completed_by if needed, though setattr covers it
+             pass 
         setattr(task, key, value) # 這裡會自動觸發 assigned_to 的 setter
     
     session.add(task)

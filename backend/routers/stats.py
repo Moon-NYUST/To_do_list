@@ -95,3 +95,56 @@ def get_overdue_tasks_details(
         "personal": personal,
         "team": team_assigned
     }
+
+@router.get("/team/{team_name}")
+def get_team_stats_and_logs(
+    team_name: str,
+    limit: int = 10,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    from models import ActivityLog, ActivityLogRead, TeamTask, SubTask
+    
+    # 1. Fetch Logs
+    logs = session.exec(
+        select(ActivityLog)
+        .where(ActivityLog.team == team_name)
+        .order_by(ActivityLog.timestamp.desc())
+        .limit(limit)
+    ).all()
+
+    # 2. Calculate Contributions
+    # - Main Tasks
+    team_tasks = session.exec(select(TeamTask).where(TeamTask.team == team_name)).all()
+    
+    contributions = {} 
+    
+    # Init members
+    # Assuming we can get members from a Team object, but here we can just collect unique assignees + completed_by
+    # Or just iterate tasks. 
+    
+    for task in team_tasks:
+        if task.completed_by:
+            if task.completed_by not in contributions:
+                contributions[task.completed_by] = {"main": 0, "sub": 0}
+            contributions[task.completed_by]["main"] += 1
+            
+        # - Subtasks (need to fetch all related subtasks)
+        subtasks = session.exec(select(SubTask).where(SubTask.task_id == task.id)).all()
+        for st in subtasks:
+            if st.is_completed and st.completed_by:
+                if st.completed_by not in contributions:
+                    contributions[st.completed_by] = {"main": 0, "sub": 0}
+                contributions[st.completed_by]["sub"] += 1
+
+    # Format contributions list
+    contribution_list = [
+        {"username": k, "main": v["main"], "sub": v["sub"], "total": v["main"] * 2 + v["sub"]} 
+        for k, v in contributions.items()
+    ]
+    contribution_list.sort(key=lambda x: x["total"], reverse=True)
+
+    return {
+        "logs": logs,
+        "contributions": contribution_list
+    }
