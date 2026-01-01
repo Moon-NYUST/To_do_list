@@ -69,11 +69,14 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
         }
 
         try {
-            await api.put(`/tasks/team/${taskId}`, { due_time: newDueTime.toISOString() });
+            // [優化] 根據路由或 Prop 判斷，或者保留此邏輯但先處理個人任務
+            // 如果是在個人任務頁面，可以直接調用個人 API
+            await api.put(`/tasks/personal/${taskId}`, { due_time: newDueTime.toISOString() });
             if (onTaskUpdate) onTaskUpdate();
         } catch (err) {
+            // 如果失敗，嘗試團隊 API
             try {
-                await api.put(`/tasks/personal/${taskId}`, { due_time: newDueTime.toISOString() });
+                await api.put(`/tasks/team/${taskId}`, { due_time: newDueTime.toISOString() });
                 if (onTaskUpdate) onTaskUpdate();
             } catch (e) {
                 console.error("Update failed", e);

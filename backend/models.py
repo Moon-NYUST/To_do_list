@@ -127,11 +127,13 @@ class TeamTask(TaskBase, table=True):
     def assigned_to(self) -> List[str]:
         if not self.assigned_to_str:
             return []
-        return self.assigned_to_str.split(",")
+        # [修復] 使用 strip() 去除逗號前後可能存在的空格，並過濾掉空字串
+        return [s.strip() for s in self.assigned_to_str.split(",") if s.strip()]
 
     @assigned_to.setter
     def assigned_to(self, value: List[str]):
-        self.assigned_to_str = ",".join(value)
+        # [優化] 存入時也確保格式統一
+        self.assigned_to_str = ",".join([str(v).strip() for v in value if v])
 
     @property
     def remaining_time(self) -> Optional[str]:

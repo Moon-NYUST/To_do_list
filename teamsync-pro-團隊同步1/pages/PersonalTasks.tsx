@@ -499,8 +499,16 @@ const PersonalTasks: React.FC = () => {
             }}
           />
         ) : (
-          <CalendarView tasks={tasks as any} onEditTask={openEditModal} />
-        )}
+        <CalendarView 
+          tasks={tasks as any} 
+          onEditTask={openEditModal} 
+          onTaskUpdate={() => {
+            // 當 CalendarView 告訴我們任務更新成功時，通知 React Query 刷新數據
+            queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+          }} 
+        />
+      )}
       </div>
 
       {showCreateModal && (
