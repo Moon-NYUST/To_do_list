@@ -41,7 +41,7 @@ const Dashboard: React.FC = () => {
   const { theme } = useTheme();
   const [now, setNow] = useState(new Date());
 
-  // 1. 取得統計資料 (React Query)
+  // 1. 取得統計資料(React Query)
   const { data: statsData, refetch: refetchStats } = useQuery({
     queryKey: ['dashboardStats'],
     queryFn: async () => {
@@ -51,7 +51,7 @@ const Dashboard: React.FC = () => {
     enabled: !!user
   });
 
-  // 2. 取得打卡紀錄 (React Query)
+  // 2. 取得打卡紀錄(React Query)
   const { data: history = [], refetch: refetchHistory } = useQuery<Attendance[]>({
     queryKey: ['attendance', user],
     queryFn: async () => {
@@ -64,7 +64,7 @@ const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<'clocked-in' | 'clocked-out'>('clocked-out');
 
-  // --- 詳情 Modal 狀態 ---
+  // --- 詳細 Modal 狀態 ---
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailTitle, setDetailTitle] = useState('');
   const [detailData, setDetailData] = useState<{ personal: TaskSummaryItem[], team: TaskSummaryItem[] }>({ personal: [], team: [] });
@@ -97,8 +97,12 @@ const Dashboard: React.FC = () => {
   const formatTime = (isoString: string) => {
     if (!isoString) return '--:--';
     try {
-      // Ensure it's treated as UTC if naive
-      const date = new Date(isoString.endsWith('Z') ? isoString : isoString + 'Z');
+      // Safely ensure UTC interpretation if it's an ISO string without Z/offset
+      let adjusted = isoString;
+      if (!adjusted.includes('Z') && !adjusted.includes('+') && !adjusted.includes('-')) {
+        adjusted += 'Z';
+      }
+      const date = new Date(adjusted);
       return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
     } catch {
       return '--:--';
@@ -129,11 +133,11 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-10">
-      {/* 頂部歡迎詞 */}
+      {/* 頂部歡迎區 */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className={`text-4xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>你好, {user} 👋</h1>
-          <p className="text-slate-500 font-medium mt-1">今天又是高效協作的一天！</p>
+          <p className="text-slate-500 font-medium mt-1">今天也是高效且美好的一天！</p>
         </div>
         <div className={`px-6 py-3 rounded-2xl shadow-sm border flex items-center gap-4 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
           <div className="text-right">
@@ -148,13 +152,13 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 統計卡片 */}
+      {/* 統計概覽 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className={`p-8 rounded-[2rem] shadow-xl relative overflow-hidden group border ${theme === 'dark' ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-50 shadow-slate-200/50'}`}>
           <div className={`absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
             <UserCheck size={80} />
           </div>
-          <p className="text-slate-500 font-bold text-sm">出勤狀態</p>
+          <p className="text-slate-500 font-bold text-sm">出勤統計</p>
           <div className="mt-4 flex items-center gap-3">
             <span className={`w-3 h-3 rounded-full ${status === 'clocked-in' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
             <h3 className={`text-2xl font-black ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{status === 'clocked-in' ? '工作中' : '已簽退'}</h3>
@@ -178,7 +182,7 @@ const Dashboard: React.FC = () => {
           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 transition-colors group-hover:bg-primary-500 group-hover:text-white ${theme === 'dark' ? 'bg-amber-950/50 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>
             <TrendingUp size={24} />
           </div>
-          <p className="text-slate-500 font-bold text-sm">待處理待辦事項</p>
+          <p className="text-slate-500 font-bold text-sm">待處理任務</p>
           <h3 className={`text-4xl font-black mt-2 ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{statsData?.pending_tasks_count || 0} <span className="text-lg text-slate-400 font-bold">項</span></h3>
           <div className="mt-4 flex items-center gap-1 text-xs font-bold text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity">
             查看詳情 <ChevronRight size={14} />
@@ -192,7 +196,7 @@ const Dashboard: React.FC = () => {
           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 transition-colors group-hover:bg-rose-500 group-hover:text-white ${theme === 'dark' ? 'bg-rose-950/50 text-rose-400' : 'bg-rose-50 text-rose-600'}`}>
             <AlertTriangle size={24} />
           </div>
-          <p className="text-slate-500 font-bold text-sm">逾期未完成</p>
+          <p className="text-slate-500 font-bold text-sm">逾期任務</p>
           <h3 className={`text-4xl font-black mt-2 ${theme === 'dark' ? 'text-rose-500' : 'text-rose-600'}`}>{statsData?.overdue_tasks_count || 0} <span className={`text-lg font-bold ${theme === 'dark' ? 'text-rose-900/50' : 'text-rose-300'}`}>項</span></h3>
           <div className="mt-4 flex items-center gap-1 text-xs font-bold text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
             查看詳情 <ChevronRight size={14} />
@@ -200,14 +204,14 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 打卡歷史紀錄 */}
+      {/* 打卡歷史紀錄*/}
       <div className={`rounded-[2.5rem] shadow-xl overflow-hidden border ${theme === 'dark' ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-100 shadow-slate-200/60'}`}>
         <div className={`p-8 border-b flex justify-between items-center ${theme === 'dark' ? 'border-slate-800' : 'border-slate-50'}`}>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-slate-800 text-white border border-slate-700' : 'bg-slate-900 text-white'}`}>
               <History size={20} />
             </div>
-            <h2 className={`text-xl font-black tracking-tight ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>最近打卡紀錄</h2>
+            <h2 className={`text-xl font-black tracking-tight ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>最近出勤紀錄</h2>
           </div>
           <span className={`text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1 ${theme === 'dark' ? 'text-slate-500 bg-slate-800' : 'text-slate-400 bg-slate-50'}`}>
             <ArrowDown size={12} /> 往下捲動查看更多
@@ -244,7 +248,7 @@ const Dashboard: React.FC = () => {
                       </div>
                     ) : (
                       <span className={`text-[10px] font-black px-3 py-1 rounded-lg animate-pulse ${theme === 'dark' ? 'bg-primary-950/50 text-primary-400' : 'bg-primary-50 text-primary-600'}`}>
-                        進行中...
+                        打卡中...
                       </span>
                     )}
                   </td>
@@ -253,7 +257,7 @@ const Dashboard: React.FC = () => {
                       ? (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600')
                       : (theme === 'dark' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/30' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
                       }`}>
-                      {record.work_hours || '計時中'}
+                      {record.work_hours || '計算中'}
                     </span>
                   </td>
                 </tr>
@@ -263,7 +267,7 @@ const Dashboard: React.FC = () => {
                   <td colSpan={4} className="px-10 py-24 text-center">
                     <div className="flex flex-col items-center gap-4 opacity-20 text-slate-500">
                       <Activity size={64} />
-                      <p className="font-bold text-lg">尚無任何打卡記錄</p>
+                      <p className="font-bold text-lg">尚無打卡紀錄</p>
                     </div>
                   </td>
                 </tr>
@@ -302,7 +306,7 @@ const Dashboard: React.FC = () => {
                       >
                         <div>
                           <p className={`font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{task.title}</p>
-                          {task.due_time && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1"><Clock size={10} /> {new Date(task.due_time).toLocaleString()}</p>}
+                          {task.due_time && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1"><Clock size={10} /> {new Date(task.due_time).toLocaleString('zh-TW', { hour12: false })}</p>}
                         </div>
                         <ExternalLink size={16} className="text-slate-400 group-hover:text-primary-500 transition-colors" />
                       </div>
@@ -334,7 +338,7 @@ const Dashboard: React.FC = () => {
                             <span className="text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded leading-none uppercase">{task.team}</span>
                             <p className={`font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{task.title}</p>
                           </div>
-                          {task.due_time && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1"><Clock size={10} /> {new Date(task.due_time).toLocaleString()}</p>}
+                          {task.due_time && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1"><Clock size={10} /> {new Date(task.due_time).toLocaleString('zh-TW', { hour12: false })}</p>}
                         </div>
                         <ExternalLink size={16} className="text-slate-400 group-hover:text-rose-500 transition-colors" />
                       </div>

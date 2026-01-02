@@ -243,7 +243,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                                             {task.due_time && (
                                                                 <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
                                                                     <Clock size={12} />
-                                                                    {new Date(task.due_time).toLocaleDateString()}
+                                                                    {new Date(task.due_time).toLocaleDateString()} {new Date(task.due_time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                                                 </div>
                                                             )}
                                                         </div>

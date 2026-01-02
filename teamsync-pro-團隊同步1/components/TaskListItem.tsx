@@ -152,7 +152,7 @@ const TaskListItem: React.FC<TaskListItemProps> = ({
                 {task.due_time && (
                     <div className={`flex items-center gap-1.5 ${new Date(task.due_time) < new Date() && !task.is_completed ? 'text-rose-500' : ''
                         }`}>
-                        <Calendar size={14} /> {new Date(task.due_time).toLocaleDateString()}
+                        <Calendar size={14} /> {new Date(task.due_time).toLocaleDateString()} {new Date(task.due_time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}
                     </div>
                 )}
                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md ${theme === 'dark' ? 'text-primary-400 bg-primary-950/50' : 'text-primary-600 bg-primary-50'

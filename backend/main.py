@@ -19,7 +19,6 @@ app = FastAPI(title="TeamSync Pro - 全端协作系统")
 def on_startup():
     create_db_and_tables()
     # 确保上传资料夹存在
-    os.makedirs("uploads/avatars", exist_ok=True)
 
 # 3. 设定 CORS
 origins = [
@@ -47,11 +46,8 @@ app.include_router(stats.router)    # /stats (儀表板統計)
 app.include_router(subtasks.router) # /subtasks (子任務)
 
 # ==========================================
-# 5. 使用者上傳檔案掛載 (頭像等)
+# 5. 使用者上傳檔案掛載 (頭像等) 改為放在PostgreSQL資料庫中
 # ==========================================
-if not os.path.exists("uploads"):
-    os.makedirs("uploads/avatars", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # ==========================================
 # 6. 前端靜態檔案托管 (僅當合併部署時使用)

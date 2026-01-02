@@ -1,5 +1,6 @@
 # backend/routers/auth.py
 import os
+import base64
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session, select
@@ -120,24 +121,27 @@ async def upload_avatar_file(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # 檢查路徑
-    os.makedirs("uploads/avatars", exist_ok=True)
+    # 1. 限制檔案大小 (例如 1MB)，避免資料庫過大
+    MAX_SIZE = 1 * 1024 * 1024 # 1MB
+    contents = await file.read()
+    if len(contents) > MAX_SIZE:
+        raise HTTPException(status_code=400, detail="圖片檔案太大了，請限制在 1MB 以內")
+
+    # 2. 將圖片二進制內容轉換為 Base64 字串
+    base64_encoded = base64.b64encode(contents).decode('utf-8')
     
-    # 產生安全檔名
-    ext = os.path.splitext(file.filename)[1]
-    filename = f"{uuid.uuid4()}{ext}"
-    file_path = f"uploads/avatars/{filename}"
+    # 3. 組合為 Data URL 格式 (讓瀏覽器能直接讀取)
+    mime_type = file.content_type  # 例如 image/jpeg
+    avatar_data_url = f"data:{mime_type};base64,{base64_encoded}"
     
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
-    # 回傳網址 (相對於前端)
-    avatar_url = f"/uploads/avatars/{filename}"
-    
-    # 更新資料庫
-    current_user.avatar = avatar_url
+    # 4. 存入資料庫
+    current_user.avatar = avatar_data_url
     session.add(current_user)
     session.commit()
     session.refresh(current_user)
     
-    return {"status": "success", "avatar": avatar_url}
+    return {
+        "status": "success", 
+        "message": "頭像上傳成功", 
+        "avatar": current_user.avatar
+    }

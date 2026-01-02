@@ -270,7 +270,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
                                                 ${isEnd ? 'rounded-r-md border-r mr-1' : '-mr-3 border-r-0'}
                                                 hover:brightness-110 hover:z-20
                                             `}
-                                            title={`${task.title} (${task.due_time ? format(new Date(task.due_time), 'MM/dd') : ''})`}
+                                            title={`${task.title} (${task.due_time ? format(new Date(task.due_time), 'MM/dd HH:mm') : ''})`}
                                             style={{
                                                 textShadow: '0 1px 2px rgba(0,0,0,0.2)'
                                             }}

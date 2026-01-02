@@ -147,7 +147,7 @@ const DraggableChat: React.FC<DraggableChatProps> = ({ taskId, taskTitle, onClos
                             const formatTime = (timestamp: string) => {
                                 if (!timestamp) return '';
                                 try {
-                                    return new Date(timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+                                    return new Date(timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
                                 } catch {
                                     return '';
                                 }

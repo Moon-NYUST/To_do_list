@@ -225,7 +225,7 @@ const TeamWorkspace: React.FC = () => {
   const formatMsgTime = (isoTime: string) => {
     if (!isoTime) return '';
     try {
-      return new Date(isoTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return new Date(isoTime).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
     } catch (e) {
       return '';
     }

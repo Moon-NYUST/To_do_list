@@ -201,7 +201,7 @@ const TeamLobby: React.FC<TeamLobbyProps> = ({
                                     <p className={`${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
                                         <span className="font-bold">{log.user_name}</span> {log.action === 'checked' ? '完成了' : '取消了'} <span className="font-bold underline decoration-slate-300 underline-offset-2">{log.task_title}</span>
                                     </p>
-                                    <span className="text-[10px] text-slate-400">{new Date(log.timestamp).toLocaleString()}</span>
+                                    <span className="text-[10px] text-slate-400">{new Date(log.timestamp).toLocaleString('zh-TW', { hour12: false })}</span>
                                 </div>
                             </div>
                         ))}

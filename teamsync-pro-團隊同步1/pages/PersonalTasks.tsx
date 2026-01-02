@@ -412,7 +412,7 @@ const PersonalTasks: React.FC = () => {
                                   <div className={`flex items-center gap-1.5 text-xs font-bold ${new Date(task.due_time) < new Date() && !task.is_completed ? 'text-rose-500' : 'text-slate-400'
                                     }`}>
                                     <Calendar size={14} />
-                                    {new Date(task.due_time).toLocaleDateString()} {new Date(task.due_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {new Date(task.due_time).toLocaleDateString()} {new Date(task.due_time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                   </div>
                                 )}
                                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
