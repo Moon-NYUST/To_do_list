@@ -2,7 +2,7 @@
   "name": "todolist-root",
   "private": true,
   "scripts": {
-    "build": "cd \"teamsync-pro-團隊同步1\" && npm install && npm run build",
+    "build": "cd \"teamsync-pro-團隊同步1\" && npm install && npm run build && cd .. && (rm -rf dist || rd /s /q dist || true) && (cp -r \"teamsync-pro-團隊同步1/dist\" ./dist || xcopy /E /I /Y \"teamsync-pro-團隊同步1\\dist\" .\\dist)",
     "install-all": "npm install && cd \"teamsync-pro-團隊同步1\" && npm install"
   },
   "dependencies": {
