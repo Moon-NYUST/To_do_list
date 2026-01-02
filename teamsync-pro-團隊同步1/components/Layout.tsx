@@ -45,6 +45,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [showThemeModal, setShowThemeModal] = useState(false); // New theme modal
   const [newTeamName, setNewTeamName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar state
 
   // Notification State
   const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -223,6 +224,21 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   };
 
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setIsSidebarOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Close sidebar on navigation (mobile)
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname, location.search]);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -267,8 +283,20 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className={`flex h-screen font-sans transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-200 text-slate-900'}`}>
+      {/* Mobile Backdrop */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-30 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`w-72 flex flex-col shadow-2xl z-20 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-slate-900 text-white'}`}>
+      <aside className={`
+        fixed inset-y-0 left-0 w-72 flex flex-col shadow-2xl z-40 transition-transform duration-300 lg:static lg:translate-x-0
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        ${theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-slate-900 text-white'}
+      `}>
         <div className="p-6 pb-2">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/30">
@@ -359,20 +387,30 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden flex flex-col relative">
-        <header className={`h-20 backdrop-blur-md border-b flex items-center justify-between px-8 shrink-0 z-10 sticky top-0 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200/60'}`}>
-          {/* Breadcrumbs / Title */}
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
-            <span>Workspace</span>
-            <ChevronRight size={14} />
-            <span className={`font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
-              {location.pathname === '/' ? '儀表板' :
-                location.pathname.includes('personal') ? '個人任務' :
-                  new URLSearchParams(location.search).get('team') || '團隊'}
-            </span>
+      <main className="flex-1 overflow-hidden flex flex-col relative w-full">
+        <header className={`h-20 backdrop-blur-md border-b flex items-center justify-between px-4 md:px-8 shrink-0 z-10 sticky top-0 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200/60'}`}>
+          <div className="flex items-center gap-4">
+            {/* Hamburger Menu */}
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className={`p-2 rounded-xl lg:hidden transition-colors ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+            >
+              <Layers size={24} />
+            </button>
+
+            {/* Breadcrumbs / Title */}
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-500 overflow-hidden">
+              <span className="hidden sm:inline">Workspace</span>
+              <ChevronRight size={14} className="hidden sm:inline" />
+              <span className={`font-bold truncate ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                {location.pathname === '/' ? '儀表板' :
+                  location.pathname.includes('personal') ? '個人任務' :
+                    new URLSearchParams(location.search).get('team') || '團隊'}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             {/* Theme Toggle Button */}
             <button
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
@@ -400,7 +438,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
           {children}
         </div>
       </main>

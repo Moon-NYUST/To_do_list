@@ -127,8 +127,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
         return (
             <div className="grid grid-cols-7 mb-2">
                 {days.map((day, i) => (
-                    <div key={i} className="text-center text-xs font-black text-slate-400 uppercase tracking-widest py-2">
-                        {day}
+                    <div key={i} className="text-center text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-tight sm:tracking-widest py-2">
+                        {day.replace('週', '')}
                     </div>
                 ))}
             </div>

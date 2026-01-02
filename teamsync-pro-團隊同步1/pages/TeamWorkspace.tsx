@@ -180,6 +180,16 @@ const TeamWorkspace: React.FC = () => {
     type: 'danger' as 'danger' | 'info'
   });
 
+  // --- 手機版適配狀態 ---
+  const [isSmallScreen, setIsSmallScreen] = useState(window.innerWidth < 1024);
+  const [activeMobileTab, setActiveMobileTab] = useState<'tasks' | 'chat'>('tasks');
+
+  useEffect(() => {
+    const handleResize = () => setIsSmallScreen(window.innerWidth < 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // --- 任務編輯狀態 ---
   const [currentTask, setCurrentTask] = useState<TeamTask | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'chat' | 'subtasks'>('details');
@@ -801,140 +811,165 @@ const TeamWorkspace: React.FC = () => {
 
   if (!activeTeam) return <div>請選擇團隊</div>;
 
-  return (
-    <Group direction="horizontal" className="h-[calc(100vh-8rem)]">
+  const renderTasks = () => (
+    <div className="flex-1 flex flex-col min-w-0 h-full">
+      <TeamHeader
+        activeTeam={activeTeam}
+        teamMembersCount={teamMembers.length}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        theme={theme}
+        onInvite={() => setShowInviteModal(true)}
+        onCreateTask={() => { resetForm(); setShowCreateModal(true); }}
+      />
 
-      {/* --- 左側：任務看板區 --- */}
-      {/* 修改 1: defaultSize 改為 70，讓任務區預設稍微變窄，給右側更多空間 */}
-      <Panel defaultSize={67.839} minSize={50} className="pr-2">
-        <div className="flex-1 flex flex-col min-w-0 h-full">
-          {/* ... 左側內容保持不變 ... */}
-          {/* (省略內部程式碼以節省空間，請保留你原本的內容) */}
-          <TeamHeader
-            activeTeam={activeTeam}
-            teamMembersCount={teamMembers.length}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-            theme={theme}
-            onInvite={() => setShowInviteModal(true)}
-            onCreateTask={() => { resetForm(); setShowCreateModal(true); }}
+      <div
+        className="flex-1 overflow-y-auto pr-2 custom-scrollbar"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={async (e) => {
+          e.preventDefault();
+          const content = e.dataTransfer.getData('text/plain');
+          if (!content) return;
+          try {
+            await api.post(`/tasks/team/`, {
+              title: content.length > 20 ? content.slice(0, 20) + '...' : content,
+              description: content,
+              team: activeTeam,
+              status: 'todo',
+              assigned_to: [currentUsername]
+            });
+            toast.success("訊息已轉為任務");
+            queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+          } catch (err) {
+            toast.error('無法將訊息轉換為任務');
+          }
+        }}
+      >
+        {viewMode === 'list' ? (
+          <div className="space-y-8">
+            {[
+              { id: 'todo', label: '待處理', color: 'bg-slate-500' },
+              { id: 'in_progress', label: '進行中', color: 'bg-primary-500' },
+              { id: 'done', label: '已完成', color: 'bg-emerald-500' }
+            ].map(section => {
+              const sectionTasks = Array.isArray(sortedTasks) ? sortedTasks.filter(t => (section.id === 'done' ? t.is_completed : (!t.is_completed && (t.status === section.id || (section.id === 'todo' && !t.status))))) : [];
+              if (sectionTasks.length === 0) return null;
+              return (
+                <div key={section.id} className="space-y-3">
+                  <h4 className="flex items-center gap-2 text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">
+                    <div className={`w-2 h-2 rounded-full ${section.color}`}></div>
+                    {section.label} ({sectionTasks.length})
+                  </h4>
+                  <div className="space-y-3">
+                    {sectionTasks.map((task) => (
+                      <TaskListItem
+                        key={task.id}
+                        task={task}
+                        theme={theme}
+                        onToggleSubtasks={toggleSubtasks}
+                        onToggleComplete={toggleComplete}
+                        onOpenEdit={openEditModal}
+                        onDelete={handleDeleteTask}
+                        onPoppedOutChat={(id) => setPoppedOutChats(prev => new Set(prev).add(id))}
+                        isExpanded={expandedTasks.has(task.id)}
+                        subtasks={tasksSubtasks[task.id]}
+                        isAssigned={hasPermission(task)}
+                        teamMembers={teamMembers}
+                        getAvatarUrl={getAvatarUrl}
+                        onToggleSubTaskItem={handleToggleSubTaskInList}
+                        onDropToSubtask={handleDropToSubtask}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : viewMode === 'kanban' ? (
+          <KanbanBoard
+            tasks={sortedTasks}
+            userMap={userAvatarMap}
+            onUpdateStatus={handleUpdateTaskStatus}
+            onEditTask={openEditModal}
+            onToggleComplete={toggleComplete}
+            onDeleteTask={handleDeleteTaskById}
+            tasksSubtasks={tasksSubtasks}
+            currentUsername={currentUsername}
+            onDropToSubtask={handleDropToSubtask}
           />
+        ) : (
+          <CalendarView tasks={sortedTasks} onEditTask={openEditModal} onTaskUpdate={() => {
+            queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+          }} />
+        )}
+      </div>
+    </div>
+  );
 
-          {/* 看板內容區 */}
-          <div
-            className="flex-1 overflow-y-auto pr-2 custom-scrollbar"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={async (e) => {
-              e.preventDefault();
-              const content = e.dataTransfer.getData('text/plain');
-              if (!content) return;
-              try {
-                await api.post(`/tasks/team/`, {
-                  title: content.length > 20 ? content.slice(0, 20) + '...' : content,
-                  description: content,
-                  team: activeTeam,
-                  status: 'todo',
-                  assigned_to: [currentUsername]
-                });
-                toast.success("訊息已轉為任務");
-                queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
-                queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-              } catch (err) {
-                toast.error('無法將訊息轉換為任務');
-              }
-            }}
-          >
-            {viewMode === 'list' ? (
-              <div className="space-y-8">
-                {/* ... List View Content (Paste your original List View code here) ... */}
-                {/* 為節省顯示空間，此處省略，請保留原有的 List View 代碼 */}
-                {[
-                  { id: 'todo', label: '待處理', color: 'bg-slate-500' },
-                  { id: 'in_progress', label: '進行中', color: 'bg-primary-500' },
-                  { id: 'done', label: '已完成', color: 'bg-emerald-500' }
-                ].map(section => {
-                  const sectionTasks = Array.isArray(sortedTasks) ? sortedTasks.filter(t => (section.id === 'done' ? t.is_completed : (!t.is_completed && (t.status === section.id || (section.id === 'todo' && !t.status))))) : [];
-                  if (sectionTasks.length === 0) return null;
-                  return (
-                    <div key={section.id} className="space-y-3">
-                      <h4 className="flex items-center gap-2 text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">
-                        <div className={`w-2 h-2 rounded-full ${section.color}`}></div>
-                        {section.label} ({sectionTasks.length})
-                      </h4>
-                      <div className="space-y-3">
-                        {sectionTasks.map((task) => (
-                          <TaskListItem
-                            key={task.id}
-                            task={task}
-                            theme={theme}
-                            onToggleSubtasks={toggleSubtasks}
-                            onToggleComplete={toggleComplete}
-                            onOpenEdit={openEditModal}
-                            onDelete={handleDeleteTask}
-                            onPoppedOutChat={(id) => setPoppedOutChats(prev => new Set(prev).add(id))}
-                            isExpanded={expandedTasks.has(task.id)}
-                            subtasks={tasksSubtasks[task.id]}
-                            isAssigned={hasPermission(task)}
-                            teamMembers={teamMembers}
-                            getAvatarUrl={getAvatarUrl}
-                            onToggleSubTaskItem={handleToggleSubTaskInList}
-                            onDropToSubtask={handleDropToSubtask}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : viewMode === 'kanban' ? (
-              <KanbanBoard
-                tasks={sortedTasks}
-                userMap={userAvatarMap}
-                onUpdateStatus={handleUpdateTaskStatus}
-                onEditTask={openEditModal}
-                onToggleComplete={toggleComplete}
-                onDeleteTask={handleDeleteTaskById}
-                tasksSubtasks={tasksSubtasks}
-                currentUsername={currentUsername}
-                onDropToSubtask={handleDropToSubtask}
-              />
-            ) : (
-              <CalendarView tasks={sortedTasks} onEditTask={openEditModal} onTaskUpdate={() => { queryClient.invalidateQueries({ queryKey: ['teamTasks'] }); queryClient.invalidateQueries({ queryKey: ['dashboardStats'] }); }} />
-            )}
+  const renderLobby = () => (
+    <TeamLobby
+      lobbyTab={lobbyTab}
+      onTabChange={handleLobbyTabChange}
+      messages={messages}
+      teamMembers={teamMembers}
+      onlineMembers={onlineMembers}
+      user={currentUsername}
+      theme={theme}
+      newMessage={newMessage}
+      setNewMessage={setNewMessage}
+      onSendMessage={sendTeamMessage}
+      teamStats={teamStats}
+      isTeamWsReady={isTeamWsReady}
+      hasMoreMsgs={hasMoreMsgs}
+      isLoadingMore={isLoadingMore}
+      onFetchMore={() => fetchMessages(true)}
+      readStatuses={readStatuses}
+      getAvatarUrl={getAvatarUrl}
+      formatMsgTime={formatMsgTime}
+    />
+  );
+
+  return (
+    <>
+      {isSmallScreen ? (
+        <div className="flex flex-col h-[calc(100vh-10rem)]">
+          {/* Mobile Tab Switcher */}
+          <div className={`flex p-1 rounded-xl mb-4 self-center ${theme === 'dark' ? 'bg-slate-900 border border-slate-800' : 'bg-slate-100'}`}>
+            <button
+              onClick={() => setActiveMobileTab('tasks')}
+              className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeMobileTab === 'tasks' ? (theme === 'dark' ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/40' : 'bg-white text-primary-600 shadow-sm') : 'text-slate-500'}`}
+            >
+              任務
+            </button>
+            <button
+              onClick={() => setActiveMobileTab('chat')}
+              className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeMobileTab === 'chat' ? (theme === 'dark' ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/40' : 'bg-white text-primary-600 shadow-sm') : 'text-slate-500'}`}
+            >
+              討論區
+            </button>
+          </div>
+
+          <div className="flex-1 min-h-0">
+            {activeMobileTab === 'tasks' ? renderTasks() : renderLobby()}
           </div>
         </div>
-      </Panel>
+      ) : (
+        <Group direction="horizontal" className="h-[calc(100vh-8rem)]">
+          <Panel defaultSize={67.839} minSize={50} className="pr-2">
+            {renderTasks()}
+          </Panel>
 
-      {/* --- 拖曳把手 --- */}
-      <Separator className="w-4 flex items-center justify-center cursor-col-resize hover:bg-slate-200/50 dark:hover:bg-slate-700/50 rounded transition-colors group z-10 focus:outline-none">
-        <div className="w-1 h-8 bg-slate-300 dark:bg-slate-600 rounded-full group-hover:bg-primary-500 transition-colors" />
-      </Separator>
+          <Separator className="w-4 flex items-center justify-center cursor-col-resize hover:bg-slate-200/50 dark:hover:bg-slate-700/50 rounded transition-colors group z-10 focus:outline-none">
+            <div className="w-1 h-8 bg-slate-300 dark:bg-slate-600 rounded-full group-hover:bg-primary-500 transition-colors" />
+          </Separator>
 
-      {/* --- 右側：團隊大廳 --- */}
-      {/* 修改 2: defaultSize=30, minSize=25, 移除 maxSize (允許使用者自由拖曳) */}
-      {/* --- 右側：團隊大廳 --- */}
-      <Panel defaultSize={32.161} minSize={25} collapsible={true}>
-        <TeamLobby
-          lobbyTab={lobbyTab}
-          onTabChange={handleLobbyTabChange}
-          messages={messages}
-          teamMembers={teamMembers}
-          onlineMembers={onlineMembers}
-          user={currentUsername}
-          theme={theme}
-          newMessage={newMessage}
-          setNewMessage={setNewMessage}
-          onSendMessage={sendTeamMessage}
-          teamStats={teamStats}
-          isTeamWsReady={isTeamWsReady}
-          hasMoreMsgs={hasMoreMsgs}
-          isLoadingMore={isLoadingMore}
-          onFetchMore={() => fetchMessages(true)}
-          readStatuses={readStatuses}
-          getAvatarUrl={getAvatarUrl}
-          formatMsgTime={formatMsgTime}
-        />
-      </Panel>
+          <Panel defaultSize={32.161} minSize={25} collapsible={true}>
+            {renderLobby()}
+          </Panel>
+        </Group>
+      )}
 
       {/* --- Modals --- */}
       <InviteModal
@@ -977,7 +1012,7 @@ const TeamWorkspace: React.FC = () => {
         setNewSubTaskTitle={setNewSubTaskTitle}
         onAddSubTask={handleAddSubTask}
         onToggleSubTask={handleToggleSubTask}
-        onDeleteSubTask={handleDeleteSubTask}
+        onDeleteSubTask={handleDeleteTask}
         taskMessages={taskMessages}
         newTaskMessage={newTaskMessage}
         setNewTaskMessage={setNewTaskMessage}
@@ -996,7 +1031,7 @@ const TeamWorkspace: React.FC = () => {
         message={confirmModal.message}
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-        type={confirmModal.type}
+        type={confirmModal.type as any}
       />
 
       {/* --- 獨立聊天室 --- */}
@@ -1017,8 +1052,8 @@ const TeamWorkspace: React.FC = () => {
           />
         );
       })}
-
-    </Group >);
+    </>
+  );
 };
 
 export default TeamWorkspace;

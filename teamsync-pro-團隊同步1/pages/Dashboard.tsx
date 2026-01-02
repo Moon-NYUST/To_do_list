@@ -222,16 +222,16 @@ const Dashboard: React.FC = () => {
           <table className="w-full text-left border-collapse">
             <thead className={`sticky top-0 z-10 shadow-sm ${theme === 'dark' ? 'bg-slate-900/95 backdrop-blur-md' : 'bg-white/95 backdrop-blur-md'}`}>
               <tr>
-                <th className="px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">日期</th>
-                <th className="px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">上班時間</th>
-                <th className="px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">下班時間</th>
-                <th className="px-10 py-5 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest">工作時數</th>
+                <th className="px-4 md:px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">日期</th>
+                <th className="px-4 md:px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">上班</th>
+                <th className="px-4 md:px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">下班</th>
+                <th className="px-4 md:px-10 py-5 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest">時數</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${theme === 'dark' ? 'divide-slate-800' : 'divide-slate-50'}`}>
               {history.map((record) => (
                 <tr key={record.id} className={`transition-colors group ${theme === 'dark' ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/80'}`}>
-                  <td className="px-10 py-7">
+                  <td className="px-4 md:px-10 py-7">
                     <p className={`font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
                       {(() => {
                         const dt = new Date(record.clock_in.includes('Z') || record.clock_in.includes('+') ? record.clock_in : record.clock_in + 'Z');
@@ -239,7 +239,7 @@ const Dashboard: React.FC = () => {
                       })()}
                     </p>
                   </td>
-                  <td className="px-10 py-7">
+                  <td className="px-4 md:px-10 py-7">
                     <div className={`flex items-center gap-2 font-medium ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
                       <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
                       {formatTime(record.clock_in)}
@@ -257,7 +257,7 @@ const Dashboard: React.FC = () => {
                       </span>
                     )}
                   </td>
-                  <td className="px-10 py-7 text-right">
+                  <td className="px-4 md:px-10 py-7 text-right">
                     <span className={`inline-block px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest ${record.clock_out
                       ? (theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600')
                       : (theme === 'dark' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/30' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')
