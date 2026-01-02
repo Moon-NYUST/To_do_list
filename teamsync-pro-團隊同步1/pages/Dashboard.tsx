@@ -306,7 +306,12 @@ const Dashboard: React.FC = () => {
                       >
                         <div>
                           <p className={`font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{task.title}</p>
-                          {task.due_time && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1"><Clock size={10} /> {new Date(task.due_time).toLocaleString('zh-TW', { hour12: false })}</p>}
+                          {task.due_time && (
+                            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                              <Clock size={10} />
+                              {new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z').toLocaleString('zh-TW', { hour12: false })}
+                            </p>
+                          )}
                         </div>
                         <ExternalLink size={16} className="text-slate-400 group-hover:text-primary-500 transition-colors" />
                       </div>
@@ -338,7 +343,12 @@ const Dashboard: React.FC = () => {
                             <span className="text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded leading-none uppercase">{task.team}</span>
                             <p className={`font-bold ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{task.title}</p>
                           </div>
-                          {task.due_time && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1"><Clock size={10} /> {new Date(task.due_time).toLocaleString('zh-TW', { hour12: false })}</p>}
+                          {task.due_time && (
+                            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                              <Clock size={10} />
+                              {new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z').toLocaleString('zh-TW', { hour12: false })}
+                            </p>
+                          )}
                         </div>
                         <ExternalLink size={16} className="text-slate-400 group-hover:text-rose-500 transition-colors" />
                       </div>

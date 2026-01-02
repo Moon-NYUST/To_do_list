@@ -221,11 +221,15 @@ const TeamWorkspace: React.FC = () => {
   const taskChatScrollRef = useRef<HTMLDivElement>(null);
   const lastReadIdRef = useRef<number>(0);
 
-  // --- Helper: 格式化時間 (新增) ---
+  // --- Helper: 格式化時間 ---
   const formatMsgTime = (isoTime: string) => {
     if (!isoTime) return '';
     try {
-      return new Date(isoTime).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+      let adjusted = isoTime;
+      if (adjusted && !adjusted.includes('Z') && !adjusted.includes('+')) {
+        adjusted += 'Z';
+      }
+      return new Date(adjusted).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
     } catch (e) {
       return '';
     }
@@ -560,11 +564,15 @@ const TeamWorkspace: React.FC = () => {
       const task = tasks.find(t => t.id === taskId);
       if (task) {
         setCurrentTask(task);
+        let due_adjusted = task.due_time || '';
+        if (due_adjusted && !due_adjusted.includes('Z') && !due_adjusted.includes('+')) {
+          due_adjusted += 'Z';
+        }
         setFormData({
           id: task.id,
           title: task.title,
           description: task.description || '',
-          due_time: task.due_time ? format(new Date(task.due_time), "yyyy-MM-dd'T'HH:mm") : '',
+          due_time: due_adjusted ? format(new Date(due_adjusted), "yyyy-MM-dd'T'HH:mm") : '',
           assigned_to: task.assigned_to
         });
         fetchSubtasks(task.id);
