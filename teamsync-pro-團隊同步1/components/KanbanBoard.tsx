@@ -11,7 +11,7 @@ const DroppableComponent = Droppable as any;
 
 const getAvatarUrl = (url: string | null) => {
     if (!url) return null;
-    if (url.startsWith('http')) return url;
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
 
     // 確保 API_BASE_URL 和 url 之間只有一個斜線
     const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;

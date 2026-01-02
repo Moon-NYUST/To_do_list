@@ -156,7 +156,7 @@ const DraggableChat: React.FC<DraggableChatProps> = ({ taskId, taskTitle, onClos
                             const senderMember = members.find(m => m.username === msg.sender);
                             const getAvatarUrl = (url: string | null) => {
                                 if (!url) return null;
-                                if (url.startsWith('http')) return url;
+                                if (url.startsWith('http') || url.startsWith('data:')) return url;
                                 return `${API_BASE_URL}${url}`;
                             };
 
