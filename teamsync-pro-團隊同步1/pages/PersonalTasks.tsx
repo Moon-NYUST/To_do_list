@@ -155,7 +155,7 @@ const PersonalTasks: React.FC = () => {
         description: formData.description,
         due_time: formData.due_time ? new Date(formData.due_time).toISOString() : null
       });
-      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       setShowCreateModal(false);
       resetForm();
@@ -177,7 +177,7 @@ const PersonalTasks: React.FC = () => {
         description: formData.description,
         due_time: formData.due_time ? new Date(formData.due_time).toISOString() : null
       });
-      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       setShowEditModal(false);
       resetForm();
@@ -192,7 +192,7 @@ const PersonalTasks: React.FC = () => {
   const handleDeleteTask = async (taskId: string) => {
     try {
       await api.delete(`/tasks/personal/${taskId}`);
-      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       toast.success('任務已刪除');
     } catch (err) {
@@ -207,7 +207,7 @@ const PersonalTasks: React.FC = () => {
         is_completed: newIsCompleted,
         completed_by: newIsCompleted ? currentUsername : null
       });
-      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     } catch (err) {
       toast.error('更新狀態失敗');
@@ -218,7 +218,7 @@ const PersonalTasks: React.FC = () => {
     if (!promoteId || !targetTeamName) return;
     try {
       await api.post(`/tasks/personal/${promoteId}/promote?team_name=${encodeURIComponent(targetTeamName)}`);
-      queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });
       queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       setPromoteId(null);
@@ -365,7 +365,7 @@ const PersonalTasks: React.FC = () => {
                                 title: content,
                                 is_completed: false
                               });
-                              queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+                              queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });
                               // 如果已經展開，順便刷新該任務的子任務列表
                               if (expandedTasks.has(task.id)) {
                                 const res = await api.get(`/subtasks/${task.id}`);
@@ -502,11 +502,12 @@ const PersonalTasks: React.FC = () => {
           <KanbanBoard
             tasks={tasks.map(t => ({ ...t, status: (t as any).status || (t.is_completed ? 'done' : 'todo'), assigned_to: [currentUsername] }))}
             onUpdateStatus={async (taskId, newStatus) => {
-              await queryClient.cancelQueries({ queryKey: ['personalTasks'] });
-              const previousTasks = queryClient.getQueryData<PersonalTask[]>(['personalTasks']);
+              const queryKey = ['personalTasks', currentUsername];
+              await queryClient.cancelQueries({ queryKey });
+              const previousTasks = queryClient.getQueryData<PersonalTask[]>(queryKey);
 
               if (previousTasks) {
-                queryClient.setQueryData<PersonalTask[]>(['personalTasks'], (old) => {
+                queryClient.setQueryData<PersonalTask[]>(queryKey, (old) => {
                   if (!old) return [];
                   return old.map(t =>
                     t.id === taskId
@@ -521,11 +522,11 @@ const PersonalTasks: React.FC = () => {
                 toast.success('狀態已更新');
               } catch (err) {
                 if (previousTasks) {
-                  queryClient.setQueryData(['personalTasks'], previousTasks);
+                  queryClient.setQueryData(queryKey, previousTasks);
                 }
                 toast.error('更新失敗');
               } finally {
-                queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+                queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });
                 queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
               }
             }}
@@ -543,7 +544,7 @@ const PersonalTasks: React.FC = () => {
                   title: content,
                   is_completed: false
                 });
-                queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+                queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });
                 toast.success('訊息已轉為子任務');
               } catch (err) {
                 toast.error('建立子任務失敗');
@@ -555,7 +556,7 @@ const PersonalTasks: React.FC = () => {
             tasks={tasks as any}
             onEditTask={openEditModal}
             onTaskUpdate={() => {
-              queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+              queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });
               queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
             }}
           />
