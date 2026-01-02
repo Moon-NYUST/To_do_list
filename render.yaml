@@ -14,7 +14,7 @@ services:
         value: http://teamsync-pro:8000 # 內部通訊地址
 
   # 2. Teamsync Pro (Private Service) - 僅供內部溝通，不對外開放
-  - type: pserv
+  - type: web
     name: teamsync-pro
     env: docker
     plan: free
