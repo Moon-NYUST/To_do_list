@@ -775,11 +775,15 @@ const TeamWorkspace: React.FC = () => {
 
   const openEditModal = (task: TeamTask) => {
     setCurrentTask(task);
+    let due_adjusted = task.due_time || '';
+    if (due_adjusted && !due_adjusted.includes('Z') && !due_adjusted.includes('+')) {
+      due_adjusted += 'Z';
+    }
     setFormData({
       id: task.id,
       title: task.title,
       description: task.description || '',
-      due_time: task.due_time ? format(new Date(task.due_time), "yyyy-MM-dd'T'HH:mm") : '',
+      due_time: due_adjusted ? format(new Date(due_adjusted), "yyyy-MM-dd'T'HH:mm") : '',
       assigned_to: Array.isArray(task.assigned_to) ? task.assigned_to : []
     });
     setActiveTab('details');

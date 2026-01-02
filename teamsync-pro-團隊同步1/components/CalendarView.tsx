@@ -62,7 +62,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
 
         let newDueTime = new Date(targetDate);
         if (task.due_time) {
-            const oldDue = new Date(task.due_time);
+            const oldDue = new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z');
             newDueTime.setHours(oldDue.getHours(), oldDue.getMinutes());
         } else {
             newDueTime.setHours(23, 59);
@@ -148,8 +148,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
 
         // 1. Pre-calculate layout
         const viewTasks = tasks.filter(task => {
-            const start = task.created_at ? startOfDay(new Date(task.created_at)) : null;
-            const end = task.due_time ? startOfDay(new Date(task.due_time)) : null;
+            const startStr = task.created_at ? (task.created_at.includes('Z') || task.created_at.includes('+') ? task.created_at : task.created_at + 'Z') : null;
+            const endStr = task.due_time ? (task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z') : null;
+
+            const start = startStr ? startOfDay(new Date(startStr)) : null;
+            const end = endStr ? startOfDay(new Date(endStr)) : null;
             if (!end) return false;
 
             if (start) {
@@ -160,11 +163,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
 
         // Sort by start date, then duration desc
         viewTasks.sort((a, b) => {
-            const startA = a.created_at ? new Date(a.created_at).getTime() : 0;
-            const startB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            const startA = a.created_at ? new Date(a.created_at.includes('Z') || a.created_at.includes('+') ? a.created_at : a.created_at + 'Z').getTime() : 0;
+            const startB = b.created_at ? new Date(b.created_at.includes('Z') || b.created_at.includes('+') ? b.created_at : b.created_at + 'Z').getTime() : 0;
             if (startA !== startB) return startA - startB;
-            const durA = (a.due_time ? new Date(a.due_time).getTime() : 0) - startA;
-            const durB = (b.due_time ? new Date(b.due_time).getTime() : 0) - startB;
+            const durA = (a.due_time ? new Date(a.due_time.includes('Z') || a.due_time.includes('+') ? a.due_time : a.due_time + 'Z').getTime() : 0) - startA;
+            const durB = (b.due_time ? new Date(b.due_time.includes('Z') || b.due_time.includes('+') ? b.due_time : b.due_time + 'Z').getTime() : 0) - startB;
             return durB - durA;
         });
 
@@ -173,8 +176,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
         const rowEndDates: number[] = [];
 
         viewTasks.forEach(task => {
-            const start = task.created_at ? new Date(task.created_at).getTime() : 0;
-            const end = task.due_time ? new Date(task.due_time).getTime() : 0;
+            const start = task.created_at ? new Date(task.created_at.includes('Z') || task.created_at.includes('+') ? task.created_at : task.created_at + 'Z').getTime() : 0;
+            const end = task.due_time ? new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z').getTime() : 0;
 
             let assignedRow = -1;
             for (let i = 0; i < rowEndDates.length; i++) {
@@ -203,8 +206,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
                     const slots = new Array(maxRows).fill(null);
 
                     viewTasks.forEach(task => {
-                        const start = task.created_at ? startOfDay(new Date(task.created_at)) : null;
-                        const end = task.due_time ? startOfDay(new Date(task.due_time)) : null;
+                        const start = task.created_at ? startOfDay(new Date(task.created_at.includes('Z') || task.created_at.includes('+') ? task.created_at : task.created_at + 'Z')) : null;
+                        const end = task.due_time ? startOfDay(new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z')) : null;
 
                         let isCovered = false;
                         if (start && end) {
@@ -246,8 +249,8 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
                                         return <div key={`empty-${rowIndex}`} className="h-6" />;
                                     }
 
-                                    const start = task.created_at ? startOfDay(new Date(task.created_at)) : null;
-                                    const end = task.due_time ? startOfDay(new Date(task.due_time)) : null;
+                                    const start = task.created_at ? startOfDay(new Date(task.created_at.includes('Z') || task.created_at.includes('+') ? task.created_at : task.created_at + 'Z')) : null;
+                                    const end = task.due_time ? startOfDay(new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z')) : null;
 
                                     const isStart = start ? isSameDay(current, start) : false;
                                     const isEnd = end ? isSameDay(current, end) : true;
@@ -270,7 +273,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
                                                 ${isEnd ? 'rounded-r-md border-r mr-1' : '-mr-3 border-r-0'}
                                                 hover:brightness-110 hover:z-20
                                             `}
-                                            title={`${task.title} (${task.due_time ? format(new Date(task.due_time), 'MM/dd HH:mm') : ''})`}
+                                            title={`${task.title} (${task.due_time ? format(new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z'), 'MM/dd HH:mm') : ''})`}
                                             style={{
                                                 textShadow: '0 1px 2px rgba(0,0,0,0.2)'
                                             }}

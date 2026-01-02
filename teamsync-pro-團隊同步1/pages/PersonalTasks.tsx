@@ -275,11 +275,15 @@ const PersonalTasks: React.FC = () => {
   };
 
   const openEditModal = (task: PersonalTask) => {
+    let due_adjusted = task.due_time || '';
+    if (due_adjusted && !due_adjusted.includes('Z') && !due_adjusted.includes('+')) {
+      due_adjusted += 'Z';
+    }
     setFormData({
       id: task.id,
       title: task.title,
       description: task.description || '',
-      due_time: task.due_time ? format(new Date(task.due_time), "yyyy-MM-dd'T'HH:mm") : '',
+      due_time: due_adjusted ? format(new Date(due_adjusted), "yyyy-MM-dd'T'HH:mm") : '',
       tags: ''
     });
     setActiveTab('details');
@@ -409,10 +413,16 @@ const PersonalTasks: React.FC = () => {
 
                               <div className="flex items-center gap-4 pt-2">
                                 {task.due_time && (
-                                  <div className={`flex items-center gap-1.5 text-xs font-bold ${new Date(task.due_time) < new Date() && !task.is_completed ? 'text-rose-500' : 'text-slate-400'
+                                  <div className={`flex items-center gap-1.5 text-xs font-bold ${(() => {
+                                    const dt = new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z');
+                                    return dt < new Date() && !task.is_completed;
+                                  })() ? 'text-rose-500' : 'text-slate-400'
                                     }`}>
                                     <Calendar size={14} />
-                                    {new Date(task.due_time).toLocaleDateString()} {new Date(task.due_time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                    {(() => {
+                                      const dt = new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z');
+                                      return dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                    })()}
                                   </div>
                                 )}
                                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">

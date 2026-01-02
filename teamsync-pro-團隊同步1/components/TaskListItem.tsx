@@ -150,9 +150,16 @@ const TaskListItem: React.FC<TaskListItemProps> = ({
 
             <div className="pl-9 flex items-center gap-4 text-xs font-bold text-slate-500">
                 {task.due_time && (
-                    <div className={`flex items-center gap-1.5 ${new Date(task.due_time) < new Date() && !task.is_completed ? 'text-rose-500' : ''
+                    <div className={`flex items-center gap-1.5 ${(() => {
+                        const dt = new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z');
+                        return dt < new Date() && !task.is_completed;
+                    })() ? 'text-rose-500' : ''
                         }`}>
-                        <Calendar size={14} /> {new Date(task.due_time).toLocaleDateString()} {new Date(task.due_time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        <Calendar size={14} />
+                        {(() => {
+                            const dt = new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z');
+                            return dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+                        })()}
                     </div>
                 )}
                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md ${theme === 'dark' ? 'text-primary-400 bg-primary-950/50' : 'text-primary-600 bg-primary-50'

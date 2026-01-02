@@ -232,7 +232,12 @@ const Dashboard: React.FC = () => {
               {history.map((record) => (
                 <tr key={record.id} className={`transition-colors group ${theme === 'dark' ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/80'}`}>
                   <td className="px-10 py-7">
-                    <p className={`font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{new Date(record.clock_in).toLocaleDateString()}</p>
+                    <p className={`font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
+                      {(() => {
+                        const dt = new Date(record.clock_in.includes('Z') || record.clock_in.includes('+') ? record.clock_in : record.clock_in + 'Z');
+                        return dt.toLocaleDateString();
+                      })()}
+                    </p>
                   </td>
                   <td className="px-10 py-7">
                     <div className={`flex items-center gap-2 font-medium ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
