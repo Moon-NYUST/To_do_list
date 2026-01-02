@@ -4,5 +4,5 @@ __pycache__/
 .vscode/
 *.log
 *.db
-backend/uploads/avatars/*
-!backend/uploads/avatars/.gitkeep
+uploads/avatars/*
+!uploads/avatars/.gitkeep

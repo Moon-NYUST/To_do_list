@@ -1,12 +1,11 @@
-# Base image
-FROM python:3.10-slim-buster
+# 使用較新且受支援的版本
+FROM python:3.10-slim-bookworm
 
-# Set working directory
+# 修正 ENV 寫法
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
 WORKDIR /app
-
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
