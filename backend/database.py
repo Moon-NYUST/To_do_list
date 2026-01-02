@@ -1,20 +1,23 @@
 from sqlmodel import SQLModel, create_engine, Session
-from models import * # Import models to register them
-
+from models import * # 確保模型已註冊
 import os
 
-# 預設使用本地 SQLite，部屬時可透過 DATABASE_URL 切換 (轉成 SQLModel 格式)
+# 1. 取得環境變數，如果沒有則使用本地 SQLite
 database_url = os.getenv("DATABASE_URL", "sqlite:///todolist.db")
 
-# 如果傳入的是 postgresql://，手動修正為 postgresql+psycopg2:// (如果需要)
+# 2. 處理 Render PostgreSQL 的網址格式相容性
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-sqlite_url = database_url
+# 3. 根據資料庫類型設定連線參數
+# 如果是 SQLite 才需要 check_same_thread
+if database_url.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+else:
+    connect_args = {} # PostgreSQL 不需要那個參數
 
-# check_same_thread=False is needed for SQLite with FastAPI
-connect_args = {"check_same_thread": False}
-engine = create_engine(sqlite_url, connect_args=connect_args)
+# 4. 建立引擎
+engine = create_engine(database_url, connect_args=connect_args)
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
