@@ -1,4 +1,10 @@
 {
+  "name": "todolist-root",
+  "private": true,
+  "scripts": {
+    "build": "cd \"teamsync-pro-團隊同步1\" && npm install && npm run build",
+    "install-all": "npm install && cd \"teamsync-pro-團隊同步1\" && npm install"
+  },
   "dependencies": {
     "axios": "^1.13.2"
   }
