@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  backend-api:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./database.db:/app/database.db
+
+  frontend-web:
+    build: ./teamsync-pro-團隊同步1
+    ports:
+      - "8000:8000"
+    depends_on:
+      - backend-api
