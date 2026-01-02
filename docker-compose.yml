@@ -1,0 +1,17 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/todolist.db:/app/todolist.db
+    environment:
+      - FRONTEND_DIST_PATH=./static
+
+  frontend:
+    build: ./teamsync-pro-團隊同步1
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend

@@ -46,8 +46,8 @@ app.include_router(subtasks.router) # /subtasks (子任務)
 # 5. 前端静态档案托管 (关键部分)
 # ==========================================
 
-# 设定前端打包档案的绝对路径 (根据您提供的路径)
-frontend_dist_path = r"C:\Users\User\Documents\114_Todolist\teamsync-pro-團隊同步1\dist"
+# 设定前端打包档案的路径 (使用环境变量或预设值)
+frontend_dist_path = os.getenv("FRONTEND_DIST_PATH", "./static")
 
 # 检查路径是否存在
 if os.path.exists(frontend_dist_path):
