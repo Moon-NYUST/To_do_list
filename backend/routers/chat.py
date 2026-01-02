@@ -5,7 +5,7 @@ from models import Message, MessageRead, User
 from jose import jwt
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 router = APIRouter(prefix="/ws", tags=["Chat"])
@@ -109,7 +109,7 @@ async def mark_as_read(
         )
     else:
         read_record.last_read_message_id = max(read_record.last_read_message_id, last_message_id)
-        read_record.updated_at = datetime.now()
+        read_record.updated_at = datetime.now(timezone.utc)
     
     session.add(read_record)
     session.commit()
@@ -166,7 +166,7 @@ async def websocket_endpoint(
                 continue
 
             # 2. 存入資料庫
-            timestamp = datetime.now()
+            timestamp = datetime.now(timezone.utc)
             saved_success = False
             
             try:

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { format } from 'date-fns';
 import api, { API_BASE_URL, WS_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -563,7 +564,7 @@ const TeamWorkspace: React.FC = () => {
           id: task.id,
           title: task.title,
           description: task.description || '',
-          due_time: task.due_time ? new Date(task.due_time).toISOString().slice(0, 16) : '',
+          due_time: task.due_time ? format(new Date(task.due_time), "yyyy-MM-dd'T'HH:mm") : '',
           assigned_to: task.assigned_to
         });
         fetchSubtasks(task.id);
@@ -610,7 +611,7 @@ const TeamWorkspace: React.FC = () => {
       await api.post('/tasks/team/', {
         title: formData.title,
         description: formData.description,
-        due_time: formData.due_time || null,
+        due_time: formData.due_time ? new Date(formData.due_time).toISOString() : null,
         team: activeTeam,
         assigned_to: formData.assigned_to.length > 0 ? formData.assigned_to : [currentUsername]
       });
@@ -661,7 +662,7 @@ const TeamWorkspace: React.FC = () => {
       await api.put(`/tasks/team/${formData.id}`, {
         title: formData.title,
         description: formData.description,
-        due_time: formData.due_time || null,
+        due_time: formData.due_time ? new Date(formData.due_time).toISOString() : null,
         assigned_to: formData.assigned_to
       });
       queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
@@ -770,7 +771,7 @@ const TeamWorkspace: React.FC = () => {
       id: task.id,
       title: task.title,
       description: task.description || '',
-      due_time: task.due_time ? new Date(task.due_time).toISOString().slice(0, 16) : '',
+      due_time: task.due_time ? format(new Date(task.due_time), "yyyy-MM-dd'T'HH:mm") : '',
       assigned_to: Array.isArray(task.assigned_to) ? task.assigned_to : []
     });
     setActiveTab('details');

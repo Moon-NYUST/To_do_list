@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +28,9 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import KanbanBoard from '../components/KanbanBoard';
 import CalendarView from '../components/CalendarView';
+import ConfirmModal from '../components/ConfirmModal';
+import toast from 'react-hot-toast';
+import { format } from 'date-fns';
 
 interface PersonalTask {
   id: string;
@@ -36,6 +39,7 @@ interface PersonalTask {
   due_time?: string;
   is_completed: boolean;
   created_at: string;
+  status?: string;
 }
 
 interface SubTask {
@@ -55,6 +59,15 @@ const PersonalTasks: React.FC = () => {
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+
+  // --- 使用者身分標準化 ---
+  const currentUsername = useMemo(() => {
+    return typeof user === 'string' ? user : (user as any)?.username || '';
+  }, [user]);
+
+  // --- 刪除確認彈窗狀態 ---
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     id: '',
@@ -77,12 +90,12 @@ const PersonalTasks: React.FC = () => {
 
   // 1. 取得個人任務 (React Query)
   const { data: tasks = [], refetch: refetchTasks } = useQuery<PersonalTask[]>({
-    queryKey: ['personalTasks', user],
+    queryKey: ['personalTasks', currentUsername],
     queryFn: async () => {
-      const res = await api.get(`/tasks/personal/${user}`);
+      const res = await api.get(`/tasks/personal/${currentUsername}`);
       return res.data;
     },
-    enabled: !!user
+    enabled: !!currentUsername
   });
 
   useEffect(() => {
@@ -116,17 +129,15 @@ const PersonalTasks: React.FC = () => {
 
   const handleToggleSubTaskInList = async (taskId: string, subtaskId: string, currentStatus: boolean) => {
     try {
-      // [修正] 改為傳送 JSON Body
-      await api.patch(`/subtasks/${subtaskId}`, { 
-        is_completed: !currentStatus 
+      await api.patch(`/subtasks/${subtaskId}`, {
+        is_completed: !currentStatus
       });
-      
       setTasksSubtasks(prev => ({
         ...prev,
         [taskId]: prev[taskId].map(st => st.id === subtaskId ? { ...st, is_completed: !currentStatus } : st)
       }));
     } catch (err) {
-      alert('更新子任務失敗');
+      toast.error('更新子任務失敗');
     }
   };
 
@@ -136,19 +147,21 @@ const PersonalTasks: React.FC = () => {
 
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.title.trim()) return;
     setIsSubmitting(true);
     try {
       await api.post(`/tasks/personal/`, {
         title: formData.title,
         description: formData.description,
-        due_time: formData.due_time || null
+        due_time: formData.due_time ? new Date(formData.due_time).toISOString() : null
       });
       queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       setShowCreateModal(false);
       resetForm();
+      toast.success('任務已新增');
     } catch (err) {
-      alert('新增失敗');
+      toast.error('新增失敗');
     } finally {
       setIsSubmitting(false);
     }
@@ -156,49 +169,48 @@ const PersonalTasks: React.FC = () => {
 
   const handleUpdateTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.id || !formData.title.trim()) return;
     setIsSubmitting(true);
     try {
       await api.put(`/tasks/personal/${formData.id}`, {
         title: formData.title,
         description: formData.description,
-        due_time: formData.due_time || null
+        due_time: formData.due_time ? new Date(formData.due_time).toISOString() : null
       });
       queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       setShowEditModal(false);
       resetForm();
+      toast.success('任務已更新');
     } catch (err) {
-      alert('更新失敗');
+      toast.error('更新失敗');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!window.confirm("確定要刪除此任務嗎？")) return;
     try {
       await api.delete(`/tasks/personal/${taskId}`);
       queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      toast.success('任務已刪除');
     } catch (err) {
-      alert('刪除失敗');
+      toast.error('刪除失敗');
     }
   };
 
   const toggleComplete = async (task: PersonalTask) => {
     try {
       const newIsCompleted = !task.is_completed;
-      // 個人任務通常只有自己，但保持一致性
-      const completedBy = newIsCompleted ? user : null;
-
       await api.put(`/tasks/personal/${task.id}`, {
         is_completed: newIsCompleted,
-        completed_by: completedBy
+        completed_by: newIsCompleted ? currentUsername : null
       });
       queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     } catch (err) {
-      alert('更新失敗');
+      toast.error('更新狀態失敗');
     }
   };
 
@@ -211,9 +223,9 @@ const PersonalTasks: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       setPromoteId(null);
       setTargetTeamName('');
-      alert(`任務已成功移轉至團隊：${targetTeamName}`);
+      toast.success(`任務已成功移轉至團隊：${targetTeamName}`);
     } catch (err) {
-      alert('升級失敗，請確認團隊名稱是否存在');
+      toast.error('升級失敗，請確認團隊名稱是否存在');
     }
   };
 
@@ -237,8 +249,9 @@ const PersonalTasks: React.FC = () => {
       });
       setSubtasks(prev => [...prev, res.data]);
       setNewSubTaskTitle('');
+      toast.success('子任務已新增');
     } catch (err) {
-      alert('新增子任務失敗');
+      toast.error('新增子任務失敗');
     }
   };
 
@@ -247,7 +260,7 @@ const PersonalTasks: React.FC = () => {
       await api.patch(`/subtasks/${id}?is_completed=${!currentStatus}`);
       setSubtasks(prev => prev.map(st => st.id === id ? { ...st, is_completed: !currentStatus } : st));
     } catch (err) {
-      alert('更新子任務失敗');
+      toast.error('更新子任務失敗');
     }
   };
 
@@ -255,8 +268,9 @@ const PersonalTasks: React.FC = () => {
     try {
       await api.delete(`/subtasks/${id}`);
       setSubtasks(prev => prev.filter(st => st.id !== id));
+      toast.success('子任務已刪除');
     } catch (err) {
-      alert('刪除子任務失敗');
+      toast.error('刪除子任務失敗');
     }
   };
 
@@ -265,7 +279,7 @@ const PersonalTasks: React.FC = () => {
       id: task.id,
       title: task.title,
       description: task.description || '',
-      due_time: task.due_time ? new Date(task.due_time).toISOString().slice(0, 16) : '',
+      due_time: task.due_time ? format(new Date(task.due_time), "yyyy-MM-dd'T'HH:mm") : '',
       tags: ''
     });
     setActiveTab('details');
@@ -285,7 +299,6 @@ const PersonalTasks: React.FC = () => {
             <p className="text-slate-500 font-medium text-sm mt-1">管理您的私人待辦事項</p>
           </div>
 
-          {/* View Switcher */}
           <div className={`flex items-center p-1 rounded-xl border ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
             <button
               onClick={() => setViewMode('list')}
@@ -309,7 +322,7 @@ const PersonalTasks: React.FC = () => {
         </div>
         <button
           onClick={() => { resetForm(); setShowCreateModal(true); }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-bold shadow-lg shadow-primary-500/30 hover:bg-primary-700 transition-all font-bold"
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-bold shadow-lg shadow-primary-500/30 hover:bg-primary-700 transition-all"
         >
           <Plus size={18} />
           新增任務
@@ -325,7 +338,6 @@ const PersonalTasks: React.FC = () => {
               { id: 'done', label: '已完成', icon: <CheckCircle size={14} />, color: 'bg-emerald-500' }
             ].map(section => {
               const sectionTasks = Array.isArray(tasks) ? tasks.filter(t => (section.id === 'done' ? t.is_completed : (!t.is_completed && ((t as any).status === section.id || (section.id === 'todo' && !(t as any).status))))) : [];
-
               if (sectionTasks.length === 0) return null;
 
               return (
@@ -338,6 +350,29 @@ const PersonalTasks: React.FC = () => {
                     {sectionTasks.map((task) => (
                       <div
                         key={task.id}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          const content = e.dataTransfer.getData('text/plain');
+                          if (content) {
+                            try {
+                              await api.post('/subtasks/', {
+                                task_id: task.id,
+                                title: content,
+                                is_completed: false
+                              });
+                              queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+                              // 如果已經展開，順便刷新該任務的子任務列表
+                              if (expandedTasks.has(task.id)) {
+                                const res = await api.get(`/subtasks/${task.id}`);
+                                setTasksSubtasks(old => ({ ...old, [task.id]: res.data }));
+                              }
+                              toast.success('訊息已轉為子任務');
+                            } catch (err) {
+                              toast.error('建立子任務失敗');
+                            }
+                          }
+                        }}
                         className={`group p-6 rounded-2xl border transition-all ${theme === 'dark'
                           ? (task.is_completed ? 'bg-emerald-900/10 border-emerald-900/30' : 'bg-slate-900 border-slate-800 hover:border-slate-700')
                           : (task.is_completed ? 'border-green-200 bg-green-50/30' : 'bg-white border-slate-100 hover:shadow-md')
@@ -412,7 +447,7 @@ const PersonalTasks: React.FC = () => {
                                 <Edit2 size={16} />
                               </button>
                               <button
-                                onClick={() => handleDeleteTask(task.id)}
+                                onClick={() => { setTaskToDelete(task.id); setShowDeleteConfirm(true); }}
                                 className={`p-2 rounded-lg transition-all ${theme === 'dark' ? 'text-slate-500 hover:text-rose-400 hover:bg-slate-800' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
                                   }`}
                                 title="刪除"
@@ -455,9 +490,8 @@ const PersonalTasks: React.FC = () => {
           </div>
         ) : viewMode === 'kanban' ? (
           <KanbanBoard
-            tasks={tasks.map(t => ({ ...t, status: (t as any).status || (t.is_completed ? 'done' : 'todo'), assigned_to: [] }))}
+            tasks={tasks.map(t => ({ ...t, status: (t as any).status || (t.is_completed ? 'done' : 'todo'), assigned_to: [currentUsername] }))}
             onUpdateStatus={async (taskId, newStatus) => {
-              // Optimistic Update
               await queryClient.cancelQueries({ queryKey: ['personalTasks'] });
               const previousTasks = queryClient.getQueryData<PersonalTask[]>(['personalTasks']);
 
@@ -474,12 +508,12 @@ const PersonalTasks: React.FC = () => {
 
               try {
                 await api.put(`/tasks/personal/${taskId}`, { status: newStatus, is_completed: newStatus === 'done' });
+                toast.success('狀態已更新');
               } catch (err) {
-                // Rollback
                 if (previousTasks) {
                   queryClient.setQueryData(['personalTasks'], previousTasks);
                 }
-                alert('更新失敗');
+                toast.error('更新失敗');
               } finally {
                 queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
                 queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
@@ -487,28 +521,35 @@ const PersonalTasks: React.FC = () => {
             }}
             onEditTask={openEditModal}
             onToggleComplete={toggleComplete}
-            onDeleteTask={async (taskId) => {
+            onDeleteTask={(taskId) => {
+              setTaskToDelete(taskId);
+              setShowDeleteConfirm(true);
+            }}
+            currentUsername={currentUsername}
+            onDropToSubtask={async (taskId, content) => {
               try {
-                // Direct delete (no confirmation)
-                await api.delete(`/tasks/personal/${taskId}`);
+                await api.post('/subtasks/', {
+                  task_id: taskId,
+                  title: content,
+                  is_completed: false
+                });
                 queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
-                queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+                toast.success('訊息已轉為子任務');
               } catch (err) {
-                console.error('刪除失敗', err);
+                toast.error('建立子任務失敗');
               }
             }}
           />
         ) : (
-        <CalendarView 
-          tasks={tasks as any} 
-          onEditTask={openEditModal} 
-          onTaskUpdate={() => {
-            // 當 CalendarView 告訴我們任務更新成功時，通知 React Query 刷新數據
-            queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
-            queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-          }} 
-        />
-      )}
+          <CalendarView
+            tasks={tasks as any}
+            onEditTask={openEditModal}
+            onTaskUpdate={() => {
+              queryClient.invalidateQueries({ queryKey: ['personalTasks'] });
+              queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+            }}
+          />
+        )}
       </div>
 
       {showCreateModal && (
@@ -552,7 +593,7 @@ const PersonalTasks: React.FC = () => {
               </div>
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setShowCreateModal(false)} className={`flex-1 py-3.5 rounded-xl font-bold transition-colors ${theme === 'dark' ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}>取消</button>
-                <button type="submit" disabled={isSubmitting || !formData.title} className="flex-1 py-3.5 rounded-xl bg-primary-600 text-white font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">確認新增</button>
+                <button type="submit" disabled={isSubmitting || !formData.title.trim()} className="flex-1 py-3.5 rounded-xl bg-primary-600 text-white font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">確認新增</button>
               </div>
             </form>
           </div>
@@ -614,7 +655,7 @@ const PersonalTasks: React.FC = () => {
                   </div>
                   <div className="pt-4 flex gap-3">
                     <button type="button" onClick={() => setShowEditModal(false)} className={`flex-1 py-3.5 rounded-xl font-bold transition-colors ${theme === 'dark' ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}>取消</button>
-                    <button type="submit" disabled={isSubmitting || !formData.title} className="flex-1 py-3.5 rounded-xl bg-primary-600 text-white font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">儲存變更</button>
+                    <button type="submit" disabled={isSubmitting || !formData.title.trim()} className="flex-1 py-3.5 rounded-xl bg-primary-600 text-white font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-500/20">儲存變更</button>
                   </div>
                 </form>
               ) : (
@@ -716,6 +757,26 @@ const PersonalTasks: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="刪除任務"
+        message="確定要刪除此任務嗎？此動作無法復原。"
+        confirmText="確認刪除"
+        cancelText="取消"
+        type="danger"
+        onConfirm={() => {
+          if (taskToDelete) {
+            handleDeleteTask(taskToDelete);
+            setShowDeleteConfirm(false);
+            setTaskToDelete(null);
+          }
+        }}
+        onCancel={() => {
+          setShowDeleteConfirm(false);
+          setTaskToDelete(null);
+        }}
+      />
     </div>
   );
 };
