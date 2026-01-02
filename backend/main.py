@@ -22,7 +22,11 @@ def on_startup():
     os.makedirs("uploads/avatars", exist_ok=True)
 
 # 3. 设定 CORS (允许所有来源，方便开发与 ngrok)
-origins = ["*"]
+origins = [
+    "http://localhost:3000",
+    "https://to-do-list-7cva.onrender.com", # 👈 填入你的 Render 前端網址
+    "*", # 暫時保留 * 以利除錯
+]
 
 app.add_middleware(
     CORSMiddleware,

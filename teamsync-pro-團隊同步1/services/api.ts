@@ -7,22 +7,16 @@ export const remindersAPI = {
 };
 
 // ---------------------------------------------------------------------------
-// 自动判断环境
+// 自動判斷環境 (修改後)
 // ---------------------------------------------------------------------------
-// 如果是开发模式 (npm run dev)，使用 localhost:8000
-// 如果是生产模式 (npm run build 后由 FastAPI 托管)，使用空字串 "" (代表相对路径)
-const isDev = import.meta.env.MODE === 'development';
+// 優先讀取環境變數，若無則回退到本地開發位址
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-const API_BASE_URL = isDev ? 'http://127.0.0.1:8000' : '';
-
-// WebSocket 网址也需要动态判断
-// 生产环境会自动抓取当前的 domain (例如 xxxx.ngrok-free.app) 并把 http 换成 ws
-export const WS_BASE_URL = isDev
-  ? 'ws://127.0.0.1:8000/ws'
-  : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+// WebSocket 網址也改為讀取環境變數
+export const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000/ws';
 
 // ---------------------------------------------------------------------------
-// Axios 设定
+// Axios 設定
 // ---------------------------------------------------------------------------
 const api = axios.create({
   baseURL: API_BASE_URL,
