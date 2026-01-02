@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -41,7 +41,46 @@ const Dashboard: React.FC = () => {
   const { theme } = useTheme();
   const [now, setNow] = useState(new Date());
 
-  // 1. 取得統計資料(React Query)
+  // --- 時區處理工具函式 ---
+  
+  // 處理時間顯示 (例如: 09:30)
+  const formatTime = (isoString: string | null) => {
+    if (!isoString) return '--:--';
+    try {
+      // 解決空格問題並補上 Z 確保瀏覽器將其視為 UTC
+      const adjusted = isoString.replace(' ', 'T');
+      const utcString = (adjusted.includes('Z') || adjusted.includes('+')) ? adjusted : `${adjusted}Z`;
+      const date = new Date(utcString);
+      return date.toLocaleTimeString('zh-TW', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        hour12: false,
+        timeZone: 'Asia/Taipei' 
+      });
+    } catch {
+      return '--:--';
+    }
+  };
+
+  // 處理日期顯示 (例如: 2024/5/20)
+  const formatDate = (isoString: string | null) => {
+    if (!isoString) return '--/--';
+    try {
+      const adjusted = isoString.replace(' ', 'T');
+      const utcString = (adjusted.includes('Z') || adjusted.includes('+')) ? adjusted : `${adjusted}Z`;
+      const date = new Date(utcString);
+      return date.toLocaleDateString('zh-TW', { 
+        timeZone: 'Asia/Taipei',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+    } catch {
+      return '--/--';
+    }
+  };
+
+  // 1. 取得統計資料
   const { data: statsData, refetch: refetchStats } = useQuery({
     queryKey: ['dashboardStats'],
     queryFn: async () => {
@@ -51,7 +90,7 @@ const Dashboard: React.FC = () => {
     enabled: !!user
   });
 
-  // 2. 取得打卡紀錄(React Query)
+  // 2. 取得打卡紀錄
   const { data: history = [], refetch: refetchHistory } = useQuery<Attendance[]>({
     queryKey: ['attendance', user],
     queryFn: async () => {
@@ -93,21 +132,6 @@ const Dashboard: React.FC = () => {
       setStatus('clocked-out');
     }
   }, [history]);
-
-  const formatTime = (isoString: string) => {
-    if (!isoString) return '--:--';
-    try {
-      // Safely ensure UTC interpretation if it's an ISO string without Z/offset
-      let adjusted = isoString;
-      if (!adjusted.includes('Z') && !adjusted.includes('+') && !adjusted.includes('-')) {
-        adjusted += 'Z';
-      }
-      const date = new Date(adjusted);
-      return date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
-    } catch {
-      return '--:--';
-    }
-  };
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -204,7 +228,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 打卡歷史紀錄*/}
+      {/* 打卡歷史紀錄 */}
       <div className={`rounded-[2.5rem] shadow-xl overflow-hidden border ${theme === 'dark' ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-100 shadow-slate-200/60'}`}>
         <div className={`p-8 border-b flex justify-between items-center ${theme === 'dark' ? 'border-slate-800' : 'border-slate-50'}`}>
           <div className="flex items-center gap-3">
@@ -233,10 +257,7 @@ const Dashboard: React.FC = () => {
                 <tr key={record.id} className={`transition-colors group ${theme === 'dark' ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/80'}`}>
                   <td className="px-4 md:px-10 py-7">
                     <p className={`font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-                      {(() => {
-                        const dt = new Date(record.clock_in.includes('Z') || record.clock_in.includes('+') ? record.clock_in : record.clock_in + 'Z');
-                        return dt.toLocaleDateString();
-                      })()}
+                      {formatDate(record.clock_in)}
                     </p>
                   </td>
                   <td className="px-4 md:px-10 py-7">
@@ -314,7 +335,8 @@ const Dashboard: React.FC = () => {
                           {task.due_time && (
                             <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
                               <Clock size={10} />
-                              {new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z').toLocaleString('zh-TW', { hour12: false })}
+                              {/* Modal 內的時間也套用相同的時區邏輯 */}
+                              {formatDate(task.due_time)} {formatTime(task.due_time)}
                             </p>
                           )}
                         </div>
@@ -351,7 +373,7 @@ const Dashboard: React.FC = () => {
                           {task.due_time && (
                             <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
                               <Clock size={10} />
-                              {new Date(task.due_time.includes('Z') || task.due_time.includes('+') ? task.due_time : task.due_time + 'Z').toLocaleString('zh-TW', { hour12: false })}
+                              {formatDate(task.due_time)} {formatTime(task.due_time)}
                             </p>
                           )}
                         </div>
