@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, MessageSquare, Minus, ChevronRight } from 'lucide-react';
-import api, { API_BASE_URL } from '../services/api';
+import api, { API_BASE_URL, WS_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
@@ -56,21 +56,9 @@ const DraggableChat: React.FC<DraggableChatProps> = ({ taskId, taskTitle, onClos
     };
 
     const setupWebSocket = () => {
-        // Get the correct WebSocket URL
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.hostname;
-
-        let port = '';
-        if (window.location.port) {
-            if (!host.includes('ngrok') && !host.includes('railway')) {
-                port = ':8000';
-            }
-        } else if (host === 'localhost' || host === '127.0.0.1') {
-            port = ':8000';
-        }
-
         const currentUsername = typeof user === 'string' ? user : (user as any)?.username || '';
-        const wsUrl = `${protocol}//${host}${port}/ws/${taskId}?username=${currentUsername}`;
+        const base = WS_BASE_URL.endsWith('/') ? WS_BASE_URL.slice(0, -1) : WS_BASE_URL;
+        const wsUrl = `${base}/${taskId}?username=${currentUsername}`;
         const ws = new WebSocket(wsUrl);
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);

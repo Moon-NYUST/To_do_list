@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api, { API_BASE_URL } from '../services/api';
+import api, { API_BASE_URL, WS_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import {
   MessageSquare,
@@ -256,19 +256,10 @@ const TeamWorkspace: React.FC = () => {
 
   // --- Helper: 取得正確的 WebSocket URL ---
   const getWebSocketUrl = (endpoint: string, params: string) => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname;
-
-    let port = '';
-    if (window.location.port) {
-      if (!host.includes('ngrok') && !host.includes('railway')) {
-        port = ':8000';
-      }
-    } else if (host === 'localhost' || host === '127.0.0.1') {
-      port = ':8000';
-    }
-
-    return `${protocol}//${host}${port}${endpoint}${params}`;
+    // 移除 WS_BASE_URL 末端的 /ws 如果 endpoint 已經包含斜線，或者進行正確拼接
+    const base = WS_BASE_URL.endsWith('/') ? WS_BASE_URL.slice(0, -1) : WS_BASE_URL;
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return `${base}${cleanEndpoint}${params}`;
   };
 
   // --- API 呼叫 ---
