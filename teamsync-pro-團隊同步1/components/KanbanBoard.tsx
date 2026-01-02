@@ -37,6 +37,7 @@ interface KanbanBoardProps {
     onEditTask: (task: Task) => void;
     onToggleComplete: (task: Task) => void;
     onDeleteTask: (taskId: string) => void;
+    onDropToSubtask: (taskId: string, content: string) => void;
 }
 
 const COLUMNS = [
@@ -52,7 +53,8 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
     onUpdateStatus,
     onEditTask,
     onToggleComplete,
-    onDeleteTask
+    onDeleteTask,
+    onDropToSubtask
 }) => {
     const { theme } = useTheme();
     const { user } = useAuth();
@@ -157,6 +159,27 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                                             ${shakingId === task.id ? 'animate-shake' : ''}
                                                             ${!isAssignedToMe ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}
                                                         `}
+                                                        onDragOver={(e) => {
+                                                            e.preventDefault();
+                                                            if (isAssignedToMe) {
+                                                                e.dataTransfer.dropEffect = 'copy';
+                                                            } else {
+                                                                e.dataTransfer.dropEffect = 'none';
+                                                            }
+                                                        }}
+                                                        onDrop={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            if (isAssignedToMe) {
+                                                                const content = e.dataTransfer.getData('text/plain');
+                                                                if (content) {
+                                                                    onDropToSubtask(task.id, content);
+                                                                }
+                                                            } else {
+                                                                triggerShake(task.id);
+                                                                toast.error("無權在此任務建立子任務");
+                                                            }
+                                                        }}
                                                     >
                                                         {/* 標題與狀態 */}
                                                         <div className="flex items-start justify-between mb-3">

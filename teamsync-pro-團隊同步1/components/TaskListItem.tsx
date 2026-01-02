@@ -28,6 +28,7 @@ interface TaskListItemProps {
     teamMembers: any[];
     getAvatarUrl: (url: string | null) => string | null;
     onToggleSubTaskItem: (taskId: string, subtaskId: string, currentStatus: boolean, completedBy?: string | null) => void;
+    onDropToSubtask: (taskId: string, content: string) => void;
 }
 
 const TaskListItem: React.FC<TaskListItemProps> = ({
@@ -43,7 +44,8 @@ const TaskListItem: React.FC<TaskListItemProps> = ({
     isAssigned,
     teamMembers,
     getAvatarUrl,
-    onToggleSubTaskItem
+    onToggleSubTaskItem,
+    onDropToSubtask
 }) => {
     return (
         <div key={task.id} className={`group p-5 rounded-2xl border transition-all ${theme === 'dark'
@@ -55,6 +57,26 @@ const TaskListItem: React.FC<TaskListItemProps> = ({
                     onOpenEdit(task);
                 } else {
                     toast.error("無權編輯此任務");
+                }
+            }}
+            onDragOver={(e) => {
+                e.preventDefault();
+                if (isAssigned) {
+                    e.dataTransfer.dropEffect = 'copy';
+                } else {
+                    e.dataTransfer.dropEffect = 'none';
+                }
+            }}
+            onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isAssigned) {
+                    const content = e.dataTransfer.getData('text/plain');
+                    if (content) {
+                        onDropToSubtask(task.id, content);
+                    }
+                } else {
+                    toast.error("無權在此任務建立子任務");
                 }
             }}
         >

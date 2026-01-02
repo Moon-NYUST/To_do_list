@@ -386,6 +386,24 @@ const TeamWorkspace: React.FC = () => {
     } catch (err) { }
   };
 
+  const handleDropToSubtask = async (taskId: string, content: string) => {
+    if (!content) return;
+    try {
+      await api.post('/subtasks/', {
+        task_id: taskId,
+        title: content.length > 20 ? content.slice(0, 20) + '...' : content,
+        is_completed: false
+      });
+      toast.success("訊息已轉為子任務");
+      // 呼叫現有的 fetchSubtasks 以更新該任務的子任務緩存
+      fetchSubtasks(taskId);
+      queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
+      refetchTeamStats();
+    } catch (err) {
+      toast.error('無法將訊息轉換為子任務');
+    }
+  };
+
   const fetchSubtasks = useCallback(async (taskId: string) => {
     try {
       const res = await api.get(`/subtasks/${taskId}`);
@@ -853,6 +871,7 @@ const TeamWorkspace: React.FC = () => {
                             teamMembers={teamMembers}
                             getAvatarUrl={getAvatarUrl}
                             onToggleSubTaskItem={handleToggleSubTaskInList}
+                            onDropToSubtask={handleDropToSubtask}
                           />
                         ))}
                       </div>
@@ -861,7 +880,16 @@ const TeamWorkspace: React.FC = () => {
                 })}
               </div>
             ) : viewMode === 'kanban' ? (
-              <KanbanBoard tasks={sortedTasks} userMap={userAvatarMap} onUpdateStatus={handleUpdateTaskStatus} onEditTask={openEditModal} onToggleComplete={toggleComplete} onDeleteTask={handleDeleteTaskById} tasksSubtasks={tasksSubtasks} />
+              <KanbanBoard
+                tasks={sortedTasks}
+                userMap={userAvatarMap}
+                onUpdateStatus={handleUpdateTaskStatus}
+                onEditTask={openEditModal}
+                onToggleComplete={toggleComplete}
+                onDeleteTask={handleDeleteTaskById}
+                tasksSubtasks={tasksSubtasks}
+                onDropToSubtask={handleDropToSubtask}
+              />
             ) : (
               <CalendarView tasks={sortedTasks} onEditTask={openEditModal} onTaskUpdate={() => { queryClient.invalidateQueries({ queryKey: ['teamTasks'] }); queryClient.invalidateQueries({ queryKey: ['dashboardStats'] }); }} />
             )}
