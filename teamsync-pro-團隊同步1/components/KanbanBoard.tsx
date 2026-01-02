@@ -4,6 +4,7 @@ import { CheckCircle, Circle, Clock, Trash2, Lock, Users } from 'lucide-react'; 
 import { useTheme } from '../context/ThemeContext';
 import api, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 
 const DraggableComponent = Draggable as any;
 const DroppableComponent = Droppable as any;
@@ -11,11 +12,11 @@ const DroppableComponent = Droppable as any;
 const getAvatarUrl = (url: string | null) => {
     if (!url) return null;
     if (url.startsWith('http')) return url;
-    
+
     // 確保 API_BASE_URL 和 url 之間只有一個斜線
     const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
     const path = url.startsWith('/') ? url : `/${url}`;
-    
+
     return `${baseUrl}${path}`;
 };
 
@@ -25,7 +26,7 @@ interface Task {
     description?: string;
     status: string;
     is_completed: boolean;
-    assigned_to?: string[]; 
+    assigned_to?: string[];
     due_time?: string;
 }
 
@@ -45,13 +46,13 @@ const COLUMNS = [
 ];
 
 // 1. 在這裡解構出 userMap
-const KanbanBoard: React.FC<KanbanBoardProps> = ({ 
-    tasks, 
+const KanbanBoard: React.FC<KanbanBoardProps> = ({
+    tasks,
     userMap = {}, // <--- 這裡要收 userMap，預設給空物件防止報錯
-    onUpdateStatus, 
-    onEditTask, 
-    onToggleComplete, 
-    onDeleteTask 
+    onUpdateStatus,
+    onEditTask,
+    onToggleComplete,
+    onDeleteTask
 }) => {
     const { theme } = useTheme();
     const { user } = useAuth();
@@ -60,7 +61,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
         in_progress: [],
         done: []
     });
-    
+
     const [isDragging, setIsDragging] = useState(false);
     const [shakingId, setShakingId] = useState<string | null>(null);
 
@@ -119,23 +120,19 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                 <div
                                     {...provided.droppableProps}
                                     ref={provided.innerRef}
-                                    className={`flex-1 rounded-2xl transition-colors ${
-                                        snapshot.isDraggingOver 
-                                        ? (theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100/50') 
+                                    className={`flex-1 rounded-2xl transition-colors ${snapshot.isDraggingOver
+                                        ? (theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100/50')
                                         : 'bg-transparent'
-                                    }`}
+                                        }`}
                                 >
                                     {boardData[column.id].map((task, index) => {
-                                        // 權限判斷：修正版 (對應之前幫你改的)
                                         const myUsername = typeof user === 'string' ? user : (user as any)?.username;
-                                        const isAssignedToMe = !task.assigned_to || 
-                                                              task.assigned_to.length === 0 || 
-                                                              task.assigned_to.some(u => String(u).trim() === String(myUsername).trim());
+                                        const isAssignedToMe = Array.isArray(task.assigned_to) && task.assigned_to.includes(myUsername || '');
 
                                         return (
-                                            <DraggableComponent 
-                                                key={task.id} 
-                                                draggableId={task.id} 
+                                            <DraggableComponent
+                                                key={task.id}
+                                                draggableId={task.id}
                                                 index={index}
                                                 isDragDisabled={!isAssignedToMe}
                                             >
@@ -144,20 +141,36 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                                         ref={provided.innerRef}
                                                         {...provided.draggableProps}
                                                         {...provided.dragHandleProps}
-                                                        onClick={() => onEditTask(task)}
+                                                        onClick={() => {
+                                                            if (isAssignedToMe) {
+                                                                onEditTask(task);
+                                                            } else {
+                                                                triggerShake(task.id);
+                                                                toast.error("無權編輯此任務");
+                                                            }
+                                                        }}
                                                         className={`
                                                             group mb-3 p-4 rounded-xl border shadow-sm transition-all
-                                                            ${theme === 'dark' 
-                                                                ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                                                            ${theme === 'dark'
+                                                                ? 'bg-slate-900 border-slate-800 hover:border-slate-700'
                                                                 : 'bg-white border-slate-100 hover:shadow-md'}
                                                             ${shakingId === task.id ? 'animate-shake' : ''}
+                                                            ${!isAssignedToMe ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}
                                                         `}
                                                     >
                                                         {/* 標題與狀態 */}
                                                         <div className="flex items-start justify-between mb-3">
                                                             <div className="flex items-center gap-2">
-                                                                <button 
-                                                                    onClick={(e) => { e.stopPropagation(); onToggleComplete(task); }}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (isAssignedToMe) {
+                                                                            onToggleComplete(task);
+                                                                        } else {
+                                                                            triggerShake(task.id);
+                                                                            toast.error("無權操作此任務");
+                                                                        }
+                                                                    }}
                                                                     className={`${task.is_completed ? 'text-emerald-500' : 'text-slate-300'}`}
                                                                 >
                                                                     {task.is_completed ? <CheckCircle size={18} /> : <Circle size={18} />}
@@ -166,7 +179,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                                                     {task.title}
                                                                 </span>
                                                             </div>
-                                                            {!isAssignedToMe && <Lock size={14} className="text-slate-600" />}
+                                                            {!isAssignedToMe && <Lock size={14} className="text-slate-400" />}
                                                         </div>
 
                                                         {/* 底部資訊：頭像顯示在這裡 */}
@@ -179,8 +192,8 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                                                     const avatarUrl = getAvatarUrl(avatarPath);
 
                                                                     return (
-                                                                        <div 
-                                                                            key={i} 
+                                                                        <div
+                                                                            key={i}
                                                                             className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-800 flex items-center justify-center overflow-hidden"
                                                                             title={username}
                                                                         >
