@@ -7,13 +7,15 @@ export const remindersAPI = {
 };
 
 // ---------------------------------------------------------------------------
-// 自動判斷環境 (修改後)
+// 自動判斷環境
 // ---------------------------------------------------------------------------
-// 優先讀取環境變數，若無則回退到本地開發位址
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-// WebSocket 網址也改為讀取環境變數
-export const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000/ws';
+const API_BASE_URL = import.meta.env.VITE_API_URL ||
+  (isLocal ? 'http://127.0.0.1:8000' : 'https://to-do-list-backend-d5xu.onrender.com');
+
+const WS_BASE_URL = import.meta.env.VITE_WS_URL ||
+  (isLocal ? 'ws://127.0.0.1:8000/ws' : 'wss://to-do-list-backend-d5xu.onrender.com/ws');
 
 // ---------------------------------------------------------------------------
 // Axios 設定
