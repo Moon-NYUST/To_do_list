@@ -8,7 +8,7 @@ services:
       - ./database.db:/app/database.db
 
   frontend-web:
-    build: ./teamsync-pro-團隊同步1
+    build: ./teamsync-pro
     ports:
       - "8000:8000"
     depends_on:
