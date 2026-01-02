@@ -1,0 +1,29 @@
+services:
+  # 1. 後端 API (Web Service) - 對外開放
+  - type: web
+    name: backend
+    env: docker
+    plan: free
+    dockerfilePath: ./teamsync-pro/dockerfile  # 請確認路徑是否正確
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: app-db
+          property: connectionString
+      - key: TEAMSYNC_URL
+        value: http://teamsync-pro:8000 # 內部通訊地址
+
+  # 2. Teamsync Pro (Private Service) - 僅供內部溝通，不對外開放
+  - type: pserv
+    name: teamsync-pro
+    env: docker
+    plan: free
+    dockerfilePath: ./backend/dockerfile # 請確認路徑是否正確
+    envVars:
+      - key: PORT
+        value: 8000
+
+# 3. 資料庫 (Managed PostgreSQL)
+databases:
+  - name: app-db
+    plan: free
