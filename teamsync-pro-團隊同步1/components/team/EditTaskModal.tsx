@@ -39,6 +39,8 @@ interface EditTaskModalProps {
     theme: 'light' | 'dark';
     getAvatarUrl: (url: string | null) => string | null;
     formatMsgTime: (iso: string) => string;
+    userAvatarMap?: Record<string, string>;
+    tasksSubtasks?: Record<string, any[]>;
 }
 
 const EditTaskModal: React.FC<EditTaskModalProps> = ({
@@ -66,7 +68,9 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
     user,
     theme,
     getAvatarUrl,
-    formatMsgTime
+    formatMsgTime,
+    userAvatarMap = {},
+    tasksSubtasks = {}
 }) => {
     const taskChatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -112,8 +116,8 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
                         <button
                             onClick={() => setActiveTab('details')}
                             className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-3 transition-all ${activeTab === 'details'
-                                    ? (theme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm')
-                                    : 'text-slate-500 hover:text-slate-700'
+                                ? (theme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm')
+                                : 'text-slate-500 hover:text-slate-700'
                                 }`}
                         >
                             <Edit2 size={16} /> 詳細資訊
@@ -121,8 +125,8 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
                         <button
                             onClick={() => setActiveTab('subtasks')}
                             className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-3 transition-all ${activeTab === 'subtasks'
-                                    ? (theme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm')
-                                    : 'text-slate-500 hover:text-slate-700'
+                                ? (theme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm')
+                                : 'text-slate-500 hover:text-slate-700'
                                 }`}
                         >
                             <ListChecks size={16} /> 子任務
@@ -133,8 +137,8 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
                         <button
                             onClick={() => setActiveTab('chat')}
                             className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-3 transition-all ${activeTab === 'chat'
-                                    ? (theme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm')
-                                    : 'text-slate-500 hover:text-slate-700'
+                                ? (theme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm')
+                                : 'text-slate-500 hover:text-slate-700'
                                 }`}
                         >
                             <MessageSquare size={16} /> 討論區
@@ -177,8 +181,8 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
                                                         type="button"
                                                         onClick={() => onAssignToggle(m.username)}
                                                         className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${formData.assigned_to.includes(m.username)
-                                                                ? 'border-primary-500 scale-110 shadow-md'
-                                                                : (theme === 'dark' ? 'border-slate-600 opacity-50 hover:opacity-100' : 'border-slate-200 opacity-50 hover:opacity-100')
+                                                            ? 'border-primary-500 scale-110 shadow-md'
+                                                            : (theme === 'dark' ? 'border-slate-600 opacity-50 hover:opacity-100' : 'border-slate-200 opacity-50 hover:opacity-100')
                                                             }`}
                                                         title={m.username}
                                                     >
@@ -265,11 +269,12 @@ const EditTaskModal: React.FC<EditTaskModalProps> = ({
                                         <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
                                             {taskMessages.map((msg, i) => {
                                                 const isMe = msg.sender === user;
-                                                const mInfo = teamMembers.find(m => m.username === msg.sender);
+                                                const avatarPath = userAvatarMap[msg.sender];
+                                                const avatarUrl = getAvatarUrl(avatarPath);
                                                 return (
                                                     <div key={i} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
-                                                        <div className="shrink-0 w-8 h-8 rounded-full border-2 border-white dark:border-slate-800 overflow-hidden shadow-sm">
-                                                            {mInfo?.avatar ? <img src={getAvatarUrl(mInfo.avatar) || ''} className="w-full h-full object-cover" alt={msg.sender} /> : <div className="w-full h-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">{msg.sender[0]}</div>}
+                                                        <div className="shrink-0 w-8 h-8 rounded-full border-2 border-white dark:border-slate-800 overflow-hidden shadow-sm flex items-center justify-center">
+                                                            {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" alt={msg.sender} /> : <div className="w-full h-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500">{msg.sender[0]?.toUpperCase()}</div>}
                                                         </div>
                                                         <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[80%]`}>
                                                             <div className="flex items-center gap-2 mb-1 px-1">

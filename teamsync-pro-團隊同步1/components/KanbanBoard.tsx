@@ -32,12 +32,14 @@ interface Task {
 
 interface KanbanBoardProps {
     tasks: Task[];
-    userMap?: Record<string, string>; // 已有的定義
+    userMap?: Record<string, string>;
     onUpdateStatus: (taskId: string, newStatus: string) => void;
     onEditTask: (task: Task) => void;
     onToggleComplete: (task: Task) => void;
     onDeleteTask: (taskId: string) => void;
     onDropToSubtask: (taskId: string, content: string) => void;
+    tasksSubtasks?: Record<string, any[]>;
+    currentUsername: string;
 }
 
 const COLUMNS = [
@@ -49,15 +51,16 @@ const COLUMNS = [
 // 1. 在這裡解構出 userMap
 const KanbanBoard: React.FC<KanbanBoardProps> = ({
     tasks,
-    userMap = {}, // <--- 這裡要收 userMap，預設給空物件防止報錯
+    userMap = {},
     onUpdateStatus,
     onEditTask,
     onToggleComplete,
     onDeleteTask,
-    onDropToSubtask
+    onDropToSubtask,
+    tasksSubtasks = {},
+    currentUsername
 }) => {
     const { theme } = useTheme();
-    const { user } = useAuth();
     const [boardData, setBoardData] = useState<Record<string, Task[]>>({
         todo: [],
         in_progress: [],
@@ -128,8 +131,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                         }`}
                                 >
                                     {boardData[column.id].map((task, index) => {
-                                        const myUsername = typeof user === 'string' ? user : (user as any)?.username;
-                                        const isAssignedToMe = Array.isArray(task.assigned_to) && task.assigned_to.includes(myUsername || '');
+                                        const isAssignedToMe = Array.isArray(task.assigned_to) && task.assigned_to.includes(currentUsername || '');
 
                                         return (
                                             <DraggableComponent

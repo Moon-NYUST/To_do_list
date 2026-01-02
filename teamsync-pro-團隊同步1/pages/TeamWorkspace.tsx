@@ -94,6 +94,9 @@ interface Contribution {
 
 const TeamWorkspace: React.FC = () => {
   const { user } = useAuth();
+  const currentUsername = useMemo(() => {
+    return typeof user === 'string' ? user : (user as any)?.username || '';
+  }, [user]);
   const [searchParams] = useSearchParams();
   const activeTeam = searchParams.get('team');
   const queryClient = useQueryClient();
@@ -249,7 +252,7 @@ const TeamWorkspace: React.FC = () => {
       // 3. 建立時間 (由新到舊)
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [tasks, user]);
+  }, [tasks, currentUsername]);
 
   // --- Helper: 取得正確的 WebSocket URL ---
   const getWebSocketUrl = (endpoint: string, params: string) => {
@@ -364,14 +367,14 @@ const TeamWorkspace: React.FC = () => {
       // 權限鎖定邏輯 (SubTask)
       if (currentStatus) {
         // 嘗試取消完成
-        if (subtaskCompletedBy && subtaskCompletedBy !== user) {
+        if (subtaskCompletedBy && subtaskCompletedBy !== currentUsername) {
           toast.error(`只有完成者 ${subtaskCompletedBy} 可以恢復此子任務`);
           return;
         }
       }
 
       const newStatus = !currentStatus;
-      const completedBy = newStatus ? user : null;
+      const completedBy = newStatus ? currentUsername : null;
 
       await api.patch(`/subtasks/${subtaskId}`, {
         is_completed: newStatus,
@@ -450,10 +453,10 @@ const TeamWorkspace: React.FC = () => {
   };
 
   const markAsRead = async (lastMsgId: number) => {
-    if (!activeTeam || !user || lastMsgId <= lastReadIdRef.current) return;
+    if (!activeTeam || !currentUsername || lastMsgId <= lastReadIdRef.current) return;
     try {
       lastReadIdRef.current = lastMsgId; // 預先更新避免重複發送
-      await api.post(`/ws/read/${activeTeam}?username=${user}&last_message_id=${lastMsgId}`);
+      await api.post(`/ws/read/${activeTeam}?username=${currentUsername}&last_message_id=${lastMsgId}`);
     } catch (err) {
       console.error("Mark as read failed:", err);
     }
@@ -476,7 +479,7 @@ const TeamWorkspace: React.FC = () => {
       fetchMessages();
       fetchReadStatus();
 
-      const wsUrl = getWebSocketUrl(`/ws/${activeTeam}`, `?username=${user}`);
+      const wsUrl = getWebSocketUrl(`/ws/${activeTeam}`, `?username=${currentUsername}`);
 
       const ws = new WebSocket(wsUrl);
 
@@ -519,11 +522,11 @@ const TeamWorkspace: React.FC = () => {
   // 2. 任務聊天室 WebSocket
   useEffect(() => {
     if (showEditModal && currentTask && activeTab === 'chat') {
-      if (!currentTask.assigned_to.includes(user || '')) return;
+      if (!currentTask.assigned_to.includes(currentUsername || '')) return;
 
       fetchTaskMessages(currentTask.id);
 
-      const wsUrl = getWebSocketUrl(`/ws/${currentTask.id}`, `?username=${user}`);
+      const wsUrl = getWebSocketUrl(`/ws/${currentTask.id}`, `?username=${currentUsername}`);
 
       const ws = new WebSocket(wsUrl);
 
@@ -618,7 +621,7 @@ const TeamWorkspace: React.FC = () => {
         description: formData.description,
         due_time: formData.due_time || null,
         team: activeTeam,
-        assigned_to: formData.assigned_to.length > 0 ? formData.assigned_to : [user]
+        assigned_to: formData.assigned_to.length > 0 ? formData.assigned_to : [currentUsername]
       });
       // Invalidate to trigger update across clients (and locally)
       queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
@@ -645,7 +648,7 @@ const TeamWorkspace: React.FC = () => {
       await api.put(`/tasks/team/${taskId}`, {
         status: newStatus,
         is_completed: isCompleted,
-        completed_by: isCompleted ? user : null
+        completed_by: isCompleted ? currentUsername : null
       });
       // 成功後 Invalidate 確保資料一致 (雖然已經樂觀更新了)
       queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
@@ -679,7 +682,7 @@ const TeamWorkspace: React.FC = () => {
 
   const toggleComplete = async (task: TeamTask) => {
     try {
-      if (!task.assigned_to.includes(user || '')) {
+      if (!task.assigned_to.includes(currentUsername || '')) {
         toast.error("您沒有權限完成此任務");
         return;
       }
@@ -687,14 +690,14 @@ const TeamWorkspace: React.FC = () => {
       // 權限鎖定邏輯
       if (task.is_completed) {
         // 嘗試取消完成
-        if (task.completed_by && task.completed_by !== user) {
+        if (task.completed_by && task.completed_by !== currentUsername) {
           toast.error(`只有完成者 ${task.completed_by} 可以恢復此任務進度`);
           return;
         }
       }
 
       const newIsCompleted = !task.is_completed;
-      const completedBy = newIsCompleted ? user : null;
+      const completedBy = newIsCompleted ? currentUsername : null;
 
       await api.put(`/tasks/team/${task.id}`, {
         is_completed: newIsCompleted,
@@ -708,7 +711,7 @@ const TeamWorkspace: React.FC = () => {
   };
 
   const handleDeleteTask = (task: TeamTask) => {
-    if (!task.assigned_to.includes(user || '')) {
+    if (!task.assigned_to.includes(currentUsername || '')) {
       toast.error("您沒有權限刪除此任務");
       return;
     }
@@ -736,7 +739,7 @@ const TeamWorkspace: React.FC = () => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    if (!task.assigned_to.includes(user || '')) {
+    if (!task.assigned_to.includes(currentUsername || '')) {
       toast.error("您沒有權限刪除此任務");
       return;
     }
@@ -785,11 +788,11 @@ const TeamWorkspace: React.FC = () => {
   };
 
   const resetForm = () => {
-    setFormData({ id: '', title: '', description: '', due_time: '', assigned_to: [user || ''] });
+    setFormData({ id: '', title: '', description: '', due_time: '', assigned_to: [currentUsername || ''] });
     setCurrentTask(null);
   };
 
-  const hasPermission = (task: TeamTask) => Array.isArray(task.assigned_to) && task.assigned_to.includes(user || '');
+  const hasPermission = (task: TeamTask) => Array.isArray(task.assigned_to) && task.assigned_to.includes(currentUsername || '');
 
 
   if (!activeTeam) return <div>請選擇團隊</div>;
@@ -827,7 +830,7 @@ const TeamWorkspace: React.FC = () => {
                   description: content,
                   team: activeTeam,
                   status: 'todo',
-                  assigned_to: [user]
+                  assigned_to: [currentUsername]
                 });
                 toast.success("訊息已轉為任務");
                 queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
@@ -888,6 +891,7 @@ const TeamWorkspace: React.FC = () => {
                 onToggleComplete={toggleComplete}
                 onDeleteTask={handleDeleteTaskById}
                 tasksSubtasks={tasksSubtasks}
+                currentUsername={currentUsername}
                 onDropToSubtask={handleDropToSubtask}
               />
             ) : (
@@ -912,7 +916,7 @@ const TeamWorkspace: React.FC = () => {
           messages={messages}
           teamMembers={teamMembers}
           onlineMembers={onlineMembers}
-          user={user}
+          user={currentUsername}
           theme={theme}
           newMessage={newMessage}
           setNewMessage={setNewMessage}
@@ -974,11 +978,12 @@ const TeamWorkspace: React.FC = () => {
         newTaskMessage={newTaskMessage}
         setNewTaskMessage={setNewTaskMessage}
         onSendTaskMessage={sendTaskMessage}
-        user={user}
+        user={currentUsername}
         theme={theme}
         getAvatarUrl={getAvatarUrl}
         formatMsgTime={formatMsgTime}
         userAvatarMap={userAvatarMap}
+        tasksSubtasks={tasksSubtasks}
       />
 
       <ConfirmModal

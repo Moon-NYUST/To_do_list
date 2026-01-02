@@ -69,7 +69,8 @@ const DraggableChat: React.FC<DraggableChatProps> = ({ taskId, taskTitle, onClos
             port = ':8000';
         }
 
-        const wsUrl = `${protocol}//${host}${port}/ws/${taskId}?username=${user}`;
+        const currentUsername = typeof user === 'string' ? user : (user as any)?.username || '';
+        const wsUrl = `${protocol}//${host}${port}/ws/${taskId}?username=${currentUsername}`;
         const ws = new WebSocket(wsUrl);
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
