@@ -452,9 +452,11 @@ const TeamWorkspace: React.FC = () => {
   const handleDeleteSubTask = async (id: string) => {
     try {
       await api.delete(`/subtasks/${id}`);
+      toast.success('刪除子任務成功');
       setSubtasks(prev => prev.filter(st => st.id !== id));
     } catch (err) {
-      alert('刪除子任務失敗');
+      console.error("刪除子任務失敗:", err);
+      toast.error('刪除子任務失敗');
     }
   };
 
@@ -1012,7 +1014,7 @@ const TeamWorkspace: React.FC = () => {
         setNewSubTaskTitle={setNewSubTaskTitle}
         onAddSubTask={handleAddSubTask}
         onToggleSubTask={handleToggleSubTask}
-        onDeleteSubTask={handleDeleteTask}
+        onDeleteSubTask={handleDeleteSubTask}
         taskMessages={taskMessages}
         newTaskMessage={newTaskMessage}
         setNewTaskMessage={setNewTaskMessage}

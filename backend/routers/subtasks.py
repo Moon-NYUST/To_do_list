@@ -10,11 +10,20 @@ from routers.chat import manager
 router = APIRouter(prefix="/subtasks", tags=["SubTasks"])
 
 @router.post("/", response_model=SubTask)
-def create_subtask(subtask: SubTask, session: Session = Depends(get_session)):
+async def create_subtask(subtask: SubTask, session: Session = Depends(get_session)):
     """新增子任務"""
     session.add(subtask)
     session.commit()
     session.refresh(subtask)
+
+    parent_task = session.get(TeamTask, subtask.task_id)
+    if parent_task:
+        await manager.broadcast({
+            "type": "TASK_UPDATE",
+            "team": parent_task.team,
+            "task_id": parent_task.id
+        }, parent_task.team)
+    
     return subtask
 
 @router.get("/{task_id}", response_model=List[SubTask])
@@ -71,17 +80,26 @@ async def toggle_subtask(  # [修改] 改為 async
     return subtask
 
 @router.delete("/{id}")
-def delete_subtask(id: str, session: Session = Depends(get_session)):
+async def delete_subtask(id: str, session: Session = Depends(get_session)):
     """刪除子任務"""
     subtask = session.get(SubTask, id)
     if not subtask:
         raise HTTPException(status_code=404, detail="SubTask not found")
     session.delete(subtask)
     session.commit()
+
+    parent_task = session.get(TeamTask, subtask.task_id)
+    if parent_task:
+        await manager.broadcast({
+            "type": "TASK_UPDATE",
+            "team": parent_task.team,
+            "task_id": parent_task.id
+        }, parent_task.team)
+
     return {"status": "success"}
 
 @router.patch("/{id}/title")
-def update_subtask_title(id: str, title: str, session: Session = Depends(get_session)):
+async def update_subtask_title(id: str, title: str, session: Session = Depends(get_session)):
     """更新子任務標題"""
     subtask = session.get(SubTask, id)
     if not subtask:
@@ -90,4 +108,13 @@ def update_subtask_title(id: str, title: str, session: Session = Depends(get_ses
     session.add(subtask)
     session.commit()
     session.refresh(subtask)
+
+    parent_task = session.get(TeamTask, subtask.task_id)
+    if parent_task:
+        await manager.broadcast({
+            "type": "TASK_UPDATE",
+            "team": parent_task.team,
+            "task_id": parent_task.id
+        }, parent_task.team)
+
     return subtask
