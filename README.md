@@ -38,7 +38,7 @@ uvicorn app.main:app --reload --port 8000
 ### 2. 前端 (Frontend)
 
 ```bash
-cd frontend
+cd teamsync-pro-團隊同步1
 npm install
 npm run dev
 
