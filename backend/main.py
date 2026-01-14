@@ -9,6 +9,7 @@ import os
 from routers import attendance, chat, auth, teams, stats, subtasks
 from routers.tasks import personal, team
 from database import create_db_and_tables
+from keep_alive import start_keep_alive
 
 load_dotenv()
 
@@ -18,6 +19,8 @@ app = FastAPI(title="TeamSync Pro - 全端协作系统")
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
+    # 啟動 Render Keep-Alive 背景任務
+    start_keep_alive()
     # 确保上传资料夹存在
 
 # 3. 设定 CORS
@@ -34,6 +37,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 3.1 健康檢查端點 (用於 Render Keep-Alive)
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "url": os.getenv("RENDER_EXTERNAL_URL")}
 
 # 4. 注册所有 API 路由
 app.include_router(auth.router)
