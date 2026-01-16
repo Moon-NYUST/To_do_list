@@ -17,7 +17,16 @@ else:
     connect_args = {} # PostgreSQL 不需要那個參數
 
 # 4. 建立引擎
-engine = create_engine(database_url, connect_args=connect_args)
+if database_url.startswith("sqlite"):
+    engine = create_engine(database_url, connect_args=connect_args)
+else:
+    # PostgreSQL 加入串接池設定，增加連線穩定性
+    engine = create_engine(
+        database_url, 
+        connect_args=connect_args,
+        pool_pre_ping=True,      # 每次連線前先測試
+        pool_recycle=300         # 每 5 分鐘重啟連線，對應 Render 資料庫限制
+    )
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
