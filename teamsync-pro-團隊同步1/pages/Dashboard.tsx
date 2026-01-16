@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
+import WorkPlanModal from '../components/WorkPlanModal';
+import FloatingNote from '../components/FloatingNote';
+import { Medal } from 'lucide-react';
 
 interface Attendance {
   id: number;
@@ -41,8 +44,13 @@ const Dashboard: React.FC = () => {
   const { theme } = useTheme();
   const [now, setNow] = useState(new Date());
 
+  // --- 新增狀態 ---
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [activeSession, setActiveSession] = useState<any>(null);
+  const [lastFinishedSession, setLastFinishedSession] = useState<any>(null);
+
   // --- 時區處理工具函式 ---
-  
+
   // 處理時間顯示 (例如: 09:30)
   const formatTime = (isoString: string | null) => {
     if (!isoString) return '--:--';
@@ -51,11 +59,11 @@ const Dashboard: React.FC = () => {
       const adjusted = isoString.replace(' ', 'T');
       const utcString = (adjusted.includes('Z') || adjusted.includes('+')) ? adjusted : `${adjusted}Z`;
       const date = new Date(utcString);
-      return date.toLocaleTimeString('zh-TW', { 
-        hour: '2-digit', 
-        minute: '2-digit', 
+      return date.toLocaleTimeString('zh-TW', {
+        hour: '2-digit',
+        minute: '2-digit',
         hour12: false,
-        timeZone: 'Asia/Taipei' 
+        timeZone: 'Asia/Taipei'
       });
     } catch {
       return '--:--';
@@ -69,7 +77,7 @@ const Dashboard: React.FC = () => {
       const adjusted = isoString.replace(' ', 'T');
       const utcString = (adjusted.includes('Z') || adjusted.includes('+')) ? adjusted : `${adjusted}Z`;
       const date = new Date(utcString);
-      return date.toLocaleDateString('zh-TW', { 
+      return date.toLocaleDateString('zh-TW', {
         timeZone: 'Asia/Taipei',
         year: 'numeric',
         month: '2-digit',
@@ -100,6 +108,30 @@ const Dashboard: React.FC = () => {
     enabled: !!user
   });
 
+  // 3. 取得目前活躍中的打卡 (持久化)
+  const { refetch: refetchActive } = useQuery({
+    queryKey: ['activeAttendance', user],
+    queryFn: async () => {
+      const res = await api.get(`/attendance/active/${user}`);
+      setActiveSession(res.data);
+      return res.data;
+    },
+    enabled: !!user
+  });
+
+  // 4. 取得最近一次完成的打卡 (戰報)
+  useQuery({
+    queryKey: ['lastAttendance', user],
+    queryFn: async () => {
+      const res = await api.get(`/attendance/${user}`);
+      const records = res.data || [];
+      const lastCompleted = records.find((r: any) => r.status === 'completed');
+      setLastFinishedSession(lastCompleted);
+      return lastCompleted;
+    },
+    enabled: !!user
+  });
+
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<'clocked-in' | 'clocked-out'>('clocked-out');
 
@@ -125,13 +157,12 @@ const Dashboard: React.FC = () => {
 
   // 同步出勤狀態
   useEffect(() => {
-    if (history.length > 0) {
-      const isStillIn = !history[0].clock_out;
-      setStatus(isStillIn ? 'clocked-in' : 'clocked-out');
+    if (activeSession) {
+      setStatus('clocked-in');
     } else {
       setStatus('clocked-out');
     }
-  }, [history]);
+  }, [activeSession]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -139,17 +170,34 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const handleClockAction = async () => {
+    if (status === 'clocked-out') {
+      setShowPlanModal(true);
+    } else {
+      // 如果是工作中，點擊按鈕我們提示他使用浮窗操作，或者直接開啟浮窗如果被關掉的話
+      alert("請使用桌面浮窗來結束工作與填寫報告");
+    }
+  };
+
+  const handleConfirmPlan = async (plannedHours: number, selectedTasks: any[]) => {
     setIsLoading(true);
     try {
-      if (status === 'clocked-out') {
-        await api.post('/attendance/', { user });
-      } else {
-        await api.post(`/attendance/clock-out?user=${user}`);
-      }
+      const taskIds = selectedTasks.map(t => t.id).join(',');
+      const taskTitles = selectedTasks.map(t => t.title).join(',');
+
+      const res = await api.post('/attendance/', {
+        user,
+        planned_hours: plannedHours,
+        task_ids: taskIds,
+        initial_task_titles: taskTitles
+      });
+
+      setActiveSession(res.data);
+      setShowPlanModal(false);
       refetchHistory();
       refetchStats();
+      refetchActive();
     } catch (err) {
-      alert("操作失敗，請稍後再試");
+      alert("開啟計畫失敗");
     } finally {
       setIsLoading(false);
     }
@@ -175,6 +223,37 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* 戰報區 (新增) */}
+      {lastFinishedSession && (
+        <div className={`p-8 rounded-[2.5rem] border shadow-xl flex flex-col md:flex-row items-center gap-8 animate-in slide-in-from-top-4 duration-500 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-gradient-to-r from-emerald-50 to-white border-emerald-100 shadow-emerald-200/20'}`}>
+          <div className={`w-16 h-16 rounded-[1.5rem] flex items-center justify-center shrink-0 ${theme === 'dark' ? 'bg-emerald-950/40 text-emerald-400' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/40'}`}>
+            <Medal size={32} />
+          </div>
+          <div className="flex-1 text-center md:text-left">
+            <h2 className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>昨日戰報：高效的一天！</h2>
+            <p className={`text-sm mt-1 font-medium ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+              你在上次工作中完成了 <span className="text-emerald-600 font-bold">{lastFinishedSession.completed_tasks?.split(',').filter(Boolean).length || 0}</span> 項任務，
+              專注了 <span className="text-emerald-600 font-bold">{lastFinishedSession.work_hours}</span>。
+            </p>
+            {lastFinishedSession.report_summary && (
+              <div className={`mt-3 p-3 rounded-xl text-xs italic ${theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-white text-slate-500 shadow-inner'}`}>
+                「{lastFinishedSession.report_summary}」
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <div className="text-center px-4">
+              <p className="text-[10px] font-black text-slate-400 uppercase">總任務</p>
+              <p className={`text-xl font-black ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{lastFinishedSession.task_ids?.split(',').length || 0}</p>
+            </div>
+            <div className="text-center px-4 border-l border-slate-200 dark:border-slate-800">
+              <p className="text-[10px] font-black text-slate-400 uppercase">完成</p>
+              <p className="text-xl font-black text-emerald-500">{lastFinishedSession.completed_tasks?.split(',').filter(Boolean).length || 0}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 統計概覽 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -395,6 +474,28 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 新增: 計畫 Modal */}
+      {showPlanModal && (
+        <WorkPlanModal
+          onClose={() => setShowPlanModal(false)}
+          onConfirm={handleConfirmPlan}
+          isLoading={isLoading}
+        />
+      )}
+
+      {/* 新增: 桌面浮窗 */}
+      {activeSession && (
+        <FloatingNote
+          session={activeSession}
+          onFinished={() => {
+            setActiveSession(null);
+            refetchHistory();
+            refetchStats();
+            refetchActive();
+          }}
+        />
       )}
     </div>
   );

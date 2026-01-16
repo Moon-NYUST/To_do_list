@@ -27,6 +27,12 @@ class AttendanceBase(SQLModel):
     user_name: str
     clock_in: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     clock_out: Optional[datetime] = None
+    planned_hours: float = Field(default=0.0)
+    task_ids: Optional[str] = Field(default=None) # Comma-separated Task IDs
+    initial_task_titles: Optional[str] = Field(default=None) # Comma-separated Task Titles
+    status: str = Field(default="working") # working, reviewing, completed
+    report_summary: Optional[str] = Field(default=None)
+    completed_tasks: Optional[str] = Field(default=None) # Metadata or specific summary
 
 class Attendance(AttendanceBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

@@ -14,12 +14,15 @@ import {
     isToday,
     isWithinInterval,
     parseISO,
-    startOfDay
+    startOfDay,
+    isWeekend
 } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Clock, User, ArrowRight } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import api from '../services/api';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../context/AuthContext';
 
 interface Task {
     id: string;
@@ -35,6 +38,7 @@ interface CalendarViewProps {
     tasks: Task[];
     onEditTask: (task: Task) => void;
     onTaskUpdate?: () => void;
+    user?: string;
 }
 
 const COLORS = [
@@ -48,9 +52,22 @@ const COLORS = [
     'bg-rose-500 border-rose-600 custom-text-white',
 ];
 
-const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUpdate }) => {
+const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUpdate, user: propUser }) => {
     const { theme } = useTheme();
+    const { user: authUser } = useAuth();
     const [currentMonth, setCurrentMonth] = useState(new Date());
+
+    const currentUser = propUser || (typeof authUser === 'string' ? authUser : (authUser as any)?.username);
+
+    const { data: heatmapData = {} } = useQuery<Record<string, number>>({
+        queryKey: ['attendanceHeatmap', currentUser],
+        queryFn: async () => {
+            if (!currentUser) return {};
+            const res = await api.get(`/attendance/heatmap/${currentUser}`);
+            return res.data;
+        },
+        enabled: !!currentUser
+    });
 
     const handleDrop = async (e: React.DragEvent, targetDate: Date) => {
         e.preventDefault();
@@ -241,6 +258,24 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, onEditTask, onTaskUp
                                     }`}>
                                     {format(day, 'd')}
                                 </span>
+                                {/* Heatmap Dot */}
+                                {currentUser && (
+                                    <div
+                                        className={`w-2 h-2 rounded-full shadow-sm animate-in fade-in zoom-in duration-300 ${(() => {
+                                            const dateStr = format(day, 'yyyy-MM-dd');
+                                            const hours = heatmapData[dateStr] || 0;
+                                            if (hours >= 7) return 'bg-emerald-600 shadow-emerald-500/50';
+                                            if (hours >= 4) return 'bg-emerald-400 shadow-emerald-300/50';
+                                            if (hours >= 1) return 'bg-emerald-200 shadow-emerald-100/50';
+                                            if (!isWeekend(day)) return 'bg-rose-500 shadow-rose-500/50';
+                                            return 'bg-slate-200 dark:bg-slate-800';
+                                        })()}`}
+                                        title={(() => {
+                                            const hours = heatmapData[format(day, 'yyyy-MM-dd')] || 0;
+                                            return `當日專注時數: ${hours}h`;
+                                        })()}
+                                    />
+                                )}
                             </div>
 
                             <div className="flex-1 w-full space-y-1">

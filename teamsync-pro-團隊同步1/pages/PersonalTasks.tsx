@@ -554,6 +554,7 @@ const PersonalTasks: React.FC = () => {
         ) : (
           <CalendarView
             tasks={tasks as any}
+            user={currentUsername}
             onEditTask={openEditModal}
             onTaskUpdate={() => {
               queryClient.invalidateQueries({ queryKey: ['personalTasks', currentUsername] });

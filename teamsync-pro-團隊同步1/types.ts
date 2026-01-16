@@ -9,6 +9,12 @@ export interface Attendance {
   clock_in: string;
   clock_out: string | null;
   work_hours: string;
+  planned_hours?: number;
+  task_ids?: string;
+  initial_task_titles?: string;
+  status?: string;
+  report_summary?: string;
+  completed_tasks?: string;
 }
 
 export interface Task {

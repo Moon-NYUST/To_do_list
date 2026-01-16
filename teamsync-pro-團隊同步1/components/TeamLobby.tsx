@@ -5,12 +5,14 @@ import {
     History,
     Wifi,
     WifiOff,
-    Send
+    Send,
+    FileText,
+    Coffee
 } from 'lucide-react';
 
 interface TeamLobbyProps {
-    lobbyTab: 'chat' | 'stats' | 'log';
-    onTabChange: (tab: 'chat' | 'stats' | 'log') => void;
+    lobbyTab: 'chat' | 'stats' | 'log' | 'report';
+    onTabChange: (tab: 'chat' | 'stats' | 'log' | 'report') => void;
     messages: any[];
     teamMembers: any[];
     onlineMembers: string[];
@@ -72,6 +74,7 @@ const TeamLobby: React.FC<TeamLobbyProps> = ({
                 <button onClick={() => onTabChange('chat')} className={`flex-1 py-1.5 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-all ${lobbyTab === 'chat' ? (theme === 'dark' ? 'bg-slate-700 shadow-sm text-primary-400' : 'bg-white shadow-sm text-primary-600') : 'text-slate-500 hover:text-primary-500'}`}><MessageSquare size={14} /> 聊天</button>
                 <button onClick={() => onTabChange('stats')} className={`flex-1 py-1.5 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-all ${lobbyTab === 'stats' ? (theme === 'dark' ? 'bg-slate-700 shadow-sm text-violet-400' : 'bg-white shadow-sm text-violet-600') : 'text-slate-500 hover:text-violet-500'}`}><BarChart2 size={14} /> 貢獻榜</button>
                 <button onClick={() => onTabChange('log')} className={`flex-1 py-1.5 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-all ${lobbyTab === 'log' ? (theme === 'dark' ? 'bg-slate-700 shadow-sm text-rose-400' : 'bg-white shadow-sm text-rose-600') : 'text-slate-500 hover:text-rose-500'}`}><History size={14} /> 日誌</button>
+                <button onClick={() => onTabChange('report')} className={`flex-1 py-1.5 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-all ${lobbyTab === 'report' ? (theme === 'dark' ? 'bg-slate-700 shadow-sm text-emerald-400' : 'bg-white shadow-sm text-emerald-600') : 'text-slate-500 hover:text-emerald-500'}`}><FileText size={14} /> 報告</button>
             </div>
 
             <div className="flex-1 overflow-hidden flex flex-col relative">
@@ -205,6 +208,51 @@ const TeamLobby: React.FC<TeamLobbyProps> = ({
                                 </div>
                             </div>
                         ))}
+                    </div>
+                )}
+                {lobbyTab === 'report' && (
+                    <div className="p-4 space-y-4 overflow-y-auto custom-scrollbar">
+                        {(!teamStats?.reports || teamStats.reports.length === 0) ? (
+                            <div className="h-full flex flex-col items-center justify-center py-20 text-slate-400 opacity-50 space-y-2">
+                                <FileText size={48} />
+                                <p className="text-sm font-bold">目前尚無工作報告</p>
+                            </div>
+                        ) : (
+                            teamStats.reports.map((report: any) => (
+                                <div key={report.id} className={`p-5 rounded-[1.5rem] border shadow-sm transition-all ${theme === 'dark' ? 'bg-slate-800/40 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-primary-500 flex items-center justify-center text-white font-black">
+                                                {report.user_name[0].toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <p className={`font-black text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>{report.user_name}</p>
+                                                <p className="text-[10px] text-slate-400 font-medium">
+                                                    {new Date(report.clock_out).toLocaleDateString()} {new Date(report.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'bg-slate-900 text-emerald-400' : 'bg-white text-emerald-600'}`}>
+                                            專注 {report.work_hours}
+                                        </div>
+                                    </div>
+
+                                    {report.report_summary && (
+                                        <div className={`p-4 rounded-2xl text-xs leading-relaxed italic ${theme === 'dark' ? 'bg-slate-900/50 text-slate-300' : 'bg-white text-slate-600 border border-slate-100'}`}>
+                                            「{report.report_summary}」
+                                        </div>
+                                    )}
+
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {report.completed_tasks?.split(',').filter(Boolean).map((t: string, i: number) => (
+                                            <span key={i} className="px-2 py-1 bg-primary-100 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 text-[9px] font-bold rounded-lg border border-primary-200/50 dark:border-primary-500/20 leading-none">
+                                                ✅ {t}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 )}
             </div>

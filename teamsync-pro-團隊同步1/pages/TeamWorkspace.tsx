@@ -119,13 +119,19 @@ const TeamWorkspace: React.FC = () => {
     enabled: !!activeTeam
   });
 
-  // Fetch Team Stats & Logs
-  const { data: teamStats, refetch: refetchTeamStats } = useQuery<{ contributions: Contribution[], logs: ActivityLog[] }>({
+  // Fetch Team Stats & Logs & Reports
+  const { data: teamStats, refetch: refetchTeamStats } = useQuery<{ contributions: Contribution[], logs: ActivityLog[], reports: any[] }>({
     queryKey: ['teamStats', activeTeam],
     queryFn: async () => {
-      if (!activeTeam) return { contributions: [], logs: [] };
-      const res = await api.get(`/stats/team/${encodeURIComponent(activeTeam)}`);
-      return res.data;
+      if (!activeTeam) return { contributions: [], logs: [], reports: [] };
+      const [statsRes, reportsRes] = await Promise.all([
+        api.get(`/stats/team/${encodeURIComponent(activeTeam)}`),
+        api.get(`/attendance/team/${encodeURIComponent(activeTeam)}`)
+      ]);
+      return {
+        ...statsRes.data,
+        reports: reportsRes.data
+      };
     },
     enabled: !!activeTeam,
     refetchInterval: 30000 // 每 30 秒更新一次
@@ -193,7 +199,7 @@ const TeamWorkspace: React.FC = () => {
   // --- 任務編輯狀態 ---
   const [currentTask, setCurrentTask] = useState<TeamTask | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'chat' | 'subtasks'>('details');
-  const [lobbyTab, setLobbyTab] = useState<'chat' | 'stats' | 'log'>('chat');
+  const [lobbyTab, setLobbyTab] = useState<'chat' | 'stats' | 'log' | 'report'>('chat');
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
   const { theme } = useTheme();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -471,7 +477,7 @@ const TeamWorkspace: React.FC = () => {
   };
 
   // Handle Tab Change
-  const handleLobbyTabChange = (tab: 'chat' | 'stats' | 'log') => {
+  const handleLobbyTabChange = (tab: 'chat' | 'stats' | 'log' | 'report') => {
     setLobbyTab(tab);
     if (tab !== 'chat') {
       refetchTeamStats();
@@ -901,10 +907,15 @@ const TeamWorkspace: React.FC = () => {
             onDropToSubtask={handleDropToSubtask}
           />
         ) : (
-          <CalendarView tasks={sortedTasks} onEditTask={openEditModal} onTaskUpdate={() => {
-            queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
-            queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-          }} />
+          <CalendarView
+            tasks={sortedTasks}
+            user={currentUsername}
+            onEditTask={openEditModal}
+            onTaskUpdate={() => {
+              queryClient.invalidateQueries({ queryKey: ['teamTasks'] });
+              queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+            }}
+          />
         )}
       </div>
     </div>
