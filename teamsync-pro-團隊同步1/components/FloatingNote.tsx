@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, CheckCircle2, Circle, Clock, Minus, Maximize2, Coffee, Send, Loader2, ListChecks } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 interface Task {
     id: string;
@@ -21,6 +22,8 @@ interface FloatingNoteProps {
 
 const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
     const { theme } = useTheme();
+    const { user: authUser } = useAuth();
+    const currentUsername = typeof authUser === 'string' ? authUser : (authUser as any)?.username || '';
     const [isMinimized, setIsMinimized] = useState(false);
     const [position, setPosition] = useState({ x: window.innerWidth - 340, y: 100 });
     const [isDragging, setIsDragging] = useState(false);
@@ -41,8 +44,13 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
     // 計時器邏輯
     useEffect(() => {
         const calculateTime = () => {
-            const startTime = new Date(session.clock_in).getTime();
-            const plannedMs = session.planned_hours * 3600000;
+            if (!session.clock_in) return 0;
+            // 確保 clock_in 被視為 UTC
+            const isoStr = session.clock_in.includes('Z') || session.clock_in.includes('+')
+                ? session.clock_in
+                : session.clock_in + 'Z';
+            const startTime = new Date(isoStr).getTime();
+            const plannedMs = (session.planned_hours || 0) * 3600000;
             const endTime = startTime + plannedMs;
             const now = new Date().getTime();
             return Math.max(0, Math.floor((endTime - now) / 1000));
@@ -52,13 +60,37 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
         const interval = setInterval(() => {
             const remaining = calculateTime();
             setTimeLeft(remaining);
-            if (remaining <= 0 && mode === 'working') {
-                // 時間到，不自動轉模式，讓使用者決定，但給個提醒？
-            }
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [session, mode]);
+    }, [session.clock_in, session.planned_hours]);
+
+    // 初始獲取任務狀態
+    useEffect(() => {
+        const fetchInitialTaskStatus = async () => {
+            if (!session.task_ids) return;
+            const ids = session.task_ids.split(',');
+            const completed: string[] = [];
+
+            for (const id of ids) {
+                try {
+                    // 同步獲取每個任務目前的狀態
+                    const res = await api.get(`/tasks/personal/${currentUsername}`);
+                    const task = res.data.find((t: any) => t.id === id);
+                    if (task?.is_completed) {
+                        completed.push(id);
+                    } else {
+                        // 如果個人任務沒找到，嘗試團隊任務
+                        // (這裡簡化處理，如果任務多可能會慢，但通常只有 3 個)
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch initial task status", e);
+                }
+            }
+            setCompletedTaskIds(completed);
+        };
+        fetchInitialTaskStatus();
+    }, [session.task_ids, currentUsername]);
 
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
@@ -92,7 +124,6 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
     const handleSubmitReport = async () => {
         setIsLoading(true);
         try {
-            const currentUsername = JSON.parse(localStorage.getItem('user') || '""');
             await api.post('/attendance/clock-out', {
                 user: currentUsername,
                 report_summary: report,
@@ -144,7 +175,7 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
         >
             {/* Header */}
             <div
-                className={`px-5 py-4 flex items-center justify-between cursor-move select-none ${theme === 'dark' ? 'bg-slate-800' : 'bg-primary-600 text-white'}`}
+                className={`px-5 py-4 flex items-center justify-between cursor-move select-none relative z-10 ${theme === 'dark' ? 'bg-slate-800' : 'bg-primary-600 text-white'}`}
                 onMouseDown={handleMouseDown}
             >
                 <div className="flex items-center gap-2">
@@ -159,34 +190,43 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
             </div>
 
             {!isMinimized && (
-                <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 flex flex-col overflow-hidden relative">
+                    {/* Notebook Margin Line */}
+                    <div className="absolute left-10 top-0 bottom-0 w-[2px] bg-rose-200/50 z-0"></div>
+
                     {mode === 'working' ? (
                         <>
                             {/* Timer Area */}
-                            <div className={`p-6 text-center border-b ${theme === 'dark' ? 'border-slate-800 bg-slate-800/20' : 'border-slate-100 bg-slate-50'}`}>
+                            <div className={`p-6 text-center border-b relative z-10 ${theme === 'dark' ? 'border-slate-800 bg-slate-800/40' : 'border-slate-100 bg-slate-50/50'}`}>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">距離完成目標還有</p>
                                 <div className={`text-4xl font-mono font-black tracking-tighter ${timeLeft === 0 ? 'text-rose-500 animate-pulse' : (theme === 'dark' ? 'text-white' : 'text-slate-900')}`}>
                                     {formatTime(timeLeft)}
                                 </div>
                             </div>
 
-                            {/* Task List */}
-                            <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar">
+                            {/* Task List with Notebook Lines */}
+                            <div
+                                className="flex-1 overflow-y-auto p-5 pb-10 space-y-0 custom-scrollbar relative z-10"
+                                style={{
+                                    backgroundImage: theme === 'dark'
+                                        ? 'linear-gradient(transparent 31px, #1e293b 31px, #1e293b 32px)'
+                                        : 'linear-gradient(transparent 31px, #f1f5f9 31px, #f1f5f9 32px)',
+                                    backgroundSize: '100% 32px',
+                                    lineHeight: '32px'
+                                }}
+                            >
                                 {tasks.map((task) => {
                                     const isDone = completedTaskIds.includes(task.id);
                                     return (
                                         <div
                                             key={task.id}
                                             onClick={() => handleTaskToggle(task.id)}
-                                            className={`p-3 rounded-2xl border flex items-center gap-3 cursor-pointer transition-all ${isDone
-                                                    ? 'bg-emerald-50/50 border-emerald-200 opacity-60'
-                                                    : (theme === 'dark' ? 'bg-slate-800/50 border-slate-700 hover:border-primary-500' : 'bg-white border-slate-100 hover:border-primary-300')
-                                                }`}
+                                            className="group flex items-center gap-4 cursor-pointer transition-all h-8 pl-8 pr-2"
                                         >
-                                            <div className={isDone ? 'text-emerald-500' : 'text-slate-300'}>
-                                                {isDone ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                            <div className={`shrink-0 ${isDone ? 'text-emerald-500' : 'text-slate-300 group-hover:text-primary-400'}`}>
+                                                {isDone ? <CheckCircle2 size={16} /> : <Circle size={16} />}
                                             </div>
-                                            <p className={`text-xs font-bold truncate ${isDone ? 'line-through text-slate-400' : (theme === 'dark' ? 'text-slate-200' : 'text-slate-700')}`}>
+                                            <p className={`text-sm font-medium truncate flex-1 font-serif italic ${isDone ? 'line-through text-slate-400 opacity-50' : (theme === 'dark' ? 'text-slate-200' : 'text-slate-700')}`}>
                                                 {task.title}
                                             </p>
                                         </div>
@@ -195,9 +235,9 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
                             </div>
 
                             {/* Footer Actions */}
-                            <div className="p-5 space-y-3 border-t border-slate-100 dark:border-slate-800">
+                            <div className="p-5 space-y-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 relative z-10">
                                 {isOverEightHours && (
-                                    <div className="flex items-center justify-center gap-2 text-amber-500 font-bold text-[10px] animate-bounce">
+                                    <div className="flex items-center justify-center gap-2 text-amber-500 font-bold text-[10px] animate-bounce mb-2">
                                         <Coffee size={14} /> 記得休息喔～
                                     </div>
                                 )}
@@ -212,7 +252,7 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
                     ) : (
                         <>
                             {/* Report Input Area */}
-                            <div className="flex-1 p-5 flex flex-col gap-4">
+                            <div className="flex-1 p-5 flex flex-col gap-4 relative z-10">
                                 <div className="flex items-center justify-between">
                                     <h3 className={`text-sm font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>今日總結</h3>
                                     <button onClick={() => setMode('working')} className="text-[10px] font-bold text-slate-400 hover:text-primary-500">返回</button>
@@ -221,21 +261,21 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
                                     placeholder="寫下今天完成的內容或遇到的問題..."
                                     value={report}
                                     onChange={(e) => setReport(e.target.value)}
-                                    className={`flex-1 p-4 rounded-2xl border outline-none resize-none text-sm font-medium transition-all ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white focus:border-primary-500' : 'bg-slate-50 border-slate-200 text-slate-700 focus:border-primary-500'}`}
+                                    className={`flex-1 p-4 rounded-2xl border outline-none resize-none text-sm font-serif italic shadow-inner transition-all ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700 text-white focus:border-primary-500' : 'bg-slate-50 border-slate-200 text-slate-700 focus:border-primary-500'}`}
                                 />
                                 <div className="flex flex-wrap gap-2">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase w-full">完成任務：</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase w-full mb-1">完成任務：</p>
                                     {completedTaskIds.length === 0 ? (
                                         <span className="text-xs text-slate-400 italic">無</span>
                                     ) : (
                                         tasks.filter(t => completedTaskIds.includes(t.id)).map(t => (
-                                            <span key={t.id} className="px-2 py-1 bg-emerald-500 text-white text-[9px] font-bold rounded-lg leading-none">{t.title}</span>
+                                            <span key={t.id} className="px-2 py-1 bg-emerald-500 text-white text-[9px] font-bold rounded-lg shadow-sm">{t.title}</span>
                                         ))
                                     )}
                                 </div>
                             </div>
 
-                            <div className="p-5 border-t border-slate-100 dark:border-slate-800">
+                            <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 relative z-10">
                                 <button
                                     onClick={handleSubmitReport}
                                     disabled={isLoading}

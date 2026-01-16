@@ -21,6 +21,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import WorkPlanModal from '../components/WorkPlanModal';
 import FloatingNote from '../components/FloatingNote';
+import CalendarView from '../components/CalendarView';
 import { Medal } from 'lucide-react';
 
 interface Attendance {
@@ -202,6 +203,8 @@ const Dashboard: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  const currentUsername = typeof user === 'string' ? user : (user as any)?.username || '';
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-10">
@@ -484,6 +487,21 @@ const Dashboard: React.FC = () => {
           isLoading={isLoading}
         />
       )}
+
+      {/* 專注時數月曆 */}
+      <div className={`p-8 rounded-[2.5rem] shadow-xl border ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+        <div className="mb-6">
+          <h2 className={`text-xl font-black tracking-tight ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>專注時數回顧</h2>
+          <p className="text-slate-500 text-xs font-medium mt-1">追蹤您的每日專注時數與目標達成情況</p>
+        </div>
+        <div className="h-[500px]">
+          <CalendarView
+            tasks={[]}
+            user={currentUsername}
+            onEditTask={() => { }}
+          />
+        </div>
+      </div>
 
       {/* 新增: 桌面浮窗 */}
       {activeSession && (
