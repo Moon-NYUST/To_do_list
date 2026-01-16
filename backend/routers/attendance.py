@@ -3,7 +3,6 @@ from typing import List, Optional
 from sqlmodel import Session, select
 from datetime import datetime, timezone
 from database import get_session
-from database import get_session
 from models import Attendance, AttendanceBase, AttendanceRead
 from pydantic import BaseModel
 
