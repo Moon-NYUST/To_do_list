@@ -42,6 +42,9 @@ interface TaskSummaryItem {
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const currentUsername = useMemo(() => {
+    return typeof user === 'string' ? user : (user as any)?.username || '';
+  }, [user]);
   const { theme } = useTheme();
   const [now, setNow] = useState(new Date());
 
@@ -96,41 +99,41 @@ const Dashboard: React.FC = () => {
       const res = await api.get('/stats/dashboard');
       return res.data;
     },
-    enabled: !!user
+    enabled: !!currentUsername
   });
 
   // 2. 取得打卡紀錄
   const { data: history = [], refetch: refetchHistory } = useQuery<Attendance[]>({
-    queryKey: ['attendance', user],
+    queryKey: ['attendance', currentUsername],
     queryFn: async () => {
-      const res = await api.get(`/attendance/${user}`);
+      const res = await api.get(`/attendance/${currentUsername}`);
       return res.data;
     },
-    enabled: !!user
+    enabled: !!currentUsername
   });
 
   // 3. 取得目前活躍中的打卡 (持久化)
   const { refetch: refetchActive } = useQuery({
-    queryKey: ['activeAttendance', user],
+    queryKey: ['activeAttendance', currentUsername],
     queryFn: async () => {
-      const res = await api.get(`/attendance/active/${user}`);
+      const res = await api.get(`/attendance/active/${currentUsername}`);
       setActiveSession(res.data);
       return res.data;
     },
-    enabled: !!user
+    enabled: !!currentUsername
   });
 
   // 4. 取得最近一次完成的打卡 (戰報)
   useQuery({
-    queryKey: ['lastAttendance', user],
+    queryKey: ['lastAttendance', currentUsername],
     queryFn: async () => {
-      const res = await api.get(`/attendance/${user}`);
+      const res = await api.get(`/attendance/${currentUsername}`);
       const records = res.data || [];
       const lastCompleted = records.find((r: any) => r.status === 'completed');
       setLastFinishedSession(lastCompleted);
       return lastCompleted;
     },
-    enabled: !!user
+    enabled: !!currentUsername
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -186,7 +189,7 @@ const Dashboard: React.FC = () => {
       const taskTitles = selectedTasks.map(t => t.title).join(',');
 
       const res = await api.post('/attendance/', {
-        user,
+        user: currentUsername,
         planned_hours: plannedHours,
         task_ids: taskIds,
         initial_task_titles: taskTitles
@@ -204,14 +207,12 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const currentUsername = typeof user === 'string' ? user : (user as any)?.username || '';
-
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-10">
       {/* 頂部歡迎區 */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className={`text-4xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>你好, {user} 👋</h1>
+          <h1 className={`text-4xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>你好, {currentUsername} 👋</h1>
           <p className="text-slate-500 font-medium mt-1">今天也是高效且美好的一天！</p>
         </div>
         <div className={`px-6 py-3 rounded-2xl shadow-sm border flex items-center gap-4 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
@@ -498,6 +499,7 @@ const Dashboard: React.FC = () => {
           <CalendarView
             tasks={[]}
             user={currentUsername}
+            showHeatmap={true}
             onEditTask={() => { }}
           />
         </div>

@@ -30,7 +30,7 @@ def get_online_status(
 
 class ClockInRequest(BaseModel):
     user: str
-    planned_hours: float
+    planned_hours: float = 0.0
     task_ids: Optional[str] = None
     initial_task_titles: Optional[str] = None
 
@@ -67,23 +67,26 @@ class ClockOutRequest(BaseModel):
 
 @router.post("/clock-out")
 def clock_out(req: ClockOutRequest, session: Session = Depends(get_session)):
+    from fastapi import HTTPException
+    
     statement = select(Attendance).where(
         Attendance.user_name == req.user,
         Attendance.status != "completed"
     ).order_by(Attendance.clock_in.desc()) # Get the latest active one
     
     record = session.exec(statement).first()
-    if record:
-        now = datetime.now(timezone.utc)
-        record.clock_out = now
-        record.status = "completed"
-        record.report_summary = req.report_summary
-        record.completed_tasks = req.completed_tasks
-        session.add(record)
-        session.commit()
-        session.refresh(record)
-        return {"message": "已簽退", "work_hours": record.work_hours, "record": record}
-    return {"message": "找不到進行中的打卡紀錄"}
+    if not record:
+        raise HTTPException(status_code=404, detail="找不到進行中的打卡紀錄")
+
+    now = datetime.now(timezone.utc)
+    record.clock_out = now
+    record.status = "completed"
+    record.report_summary = req.report_summary
+    record.completed_tasks = req.completed_tasks
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+    return {"message": "已簽退", "work_hours": record.work_hours, "record": record}
 
 @router.get("/active/{user}", response_model=Optional[Attendance])
 def get_active_session(user: str, session: Session = Depends(get_session)):
@@ -135,7 +138,7 @@ def get_history(user: str, session: Session = Depends(get_session)):
 
 @router.get("/status/online")
 def get_online_users(session: Session = Depends(get_session)):
-    # 查詢所有沒有 clock_out 的紀錄
-    statement = select(Attendance.user_name).where(Attendance.clock_out == None).distinct()
+    # 查詢所有 status 為 working 或 reviewing 的紀錄
+    statement = select(Attendance.user_name).where(Attendance.status != "completed").distinct()
     online = session.exec(statement).all()
     return {"online_users": online}

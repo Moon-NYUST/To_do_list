@@ -45,10 +45,11 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
     useEffect(() => {
         const calculateTime = () => {
             if (!session.clock_in) return 0;
-            // 確保 clock_in 被視為 UTC
-            const isoStr = session.clock_in.includes('Z') || session.clock_in.includes('+')
-                ? session.clock_in
-                : session.clock_in + 'Z';
+            // 確保 clock_in 被視為 UTC 並處理空格問題
+            const adjusted = session.clock_in.replace(' ', 'T');
+            const isoStr = (adjusted.includes('Z') || adjusted.includes('+'))
+                ? adjusted
+                : adjusted + 'Z';
             const startTime = new Date(isoStr).getTime();
             const plannedMs = (session.planned_hours || 0) * 3600000;
             const endTime = startTime + plannedMs;
@@ -122,16 +123,23 @@ const FloatingNote: React.FC<FloatingNoteProps> = ({ session, onFinished }) => {
     };
 
     const handleSubmitReport = async () => {
+        if (!currentUsername) {
+            alert("錯誤：找不到用戶名稱，請重新整理頁面。");
+            return;
+        }
         setIsLoading(true);
         try {
-            await api.post('/attendance/clock-out', {
+            const res = await api.post('/attendance/clock-out', {
                 user: currentUsername,
                 report_summary: report,
                 completed_tasks: completedTaskIds.join(',')
             });
+            console.log("Clock-out success:", res.data);
             onFinished();
-        } catch (err) {
-            alert("提交報告失敗");
+        } catch (err: any) {
+            console.error("Clock-out error:", err.response || err);
+            const errMsg = err.response?.data?.detail || "提交報告失敗，請稍後再試";
+            alert(errMsg);
         } finally {
             setIsLoading(false);
         }
